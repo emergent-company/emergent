@@ -39,7 +39,7 @@ const initialPrompt = `start emergent onboarding
 Important context:
 - This project is already configured — EMERGENT_PROJECT_ID is set in .env.local.
 - Do NOT create a new project or list existing projects. Use the project from .env.local.
-- For Step 2.5 (LLM provider): the user wants to use vertex-ai-express. Save the credential using: emergent provider set-vertex-express "AQ.Ab8RN6KJRRdau1iBFTDC2gy9vsq72X_02LmK_SHgcbAVD51uCg"
+- For Step 2.5 (LLM provider): the user wants to use vertex-ai-express. Save the credential using: emergent provider set-vertex-express "AQ.Ab8RN6IPwK_xdjFcvi9NGiQmt10Er7gk7WzSY9hvyWoYmWprEg"
 - Then verify it works with: emergent provider test vertex-ai-express
 - Complete all remaining steps automatically without asking for confirmation: design the template pack, install it, upload the documents, create graph objects, then run a search query to verify.
 - IMPORTANT: When creating graph objects, use the batch command: emergent graph objects create-batch --file <path>
@@ -109,7 +109,7 @@ func TestOnboardSkill(t *testing.T) {
 // vertexExpressAPIKey is the Vertex AI Express Mode API key used for testing.
 // The harness saves this credential before the opencode run so the agent
 // only needs to verify it (not configure it).
-const vertexExpressAPIKey = "AQ.Ab8RN6KJRRdau1iBFTDC2gy9vsq72X_02LmK_SHgcbAVD51uCg"
+const vertexExpressAPIKey = "AQ.Ab8RN6IPwK_xdjFcvi9NGiQmt10Er7gk7WzSY9hvyWoYmWprEg"
 
 // vertexExpressPrompt is the prompt for TestOnboardSkillWithVertexAIExpress.
 // The credential is pre-configured by the harness; the agent just verifies it
