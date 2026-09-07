@@ -112,6 +112,19 @@ func (s *CredentialService) Resolve(ctx context.Context, provider ProviderType) 
 	return nil, fmt.Errorf("no %s provider config found for project %s — run 'memory provider configure-project %s' to set credentials", provider, projectID, provider)
 }
 
+// stripModelPrefix removes a "provider/" routing prefix from a model name,
+// returning the bare model name. Provider configs may store models prefixed
+// with their routing provider (e.g. "deepseek/deepseek-v4-flash" served through
+// an OpenAI-compatible LiteLLM proxy); the resolved credential must carry the
+// bare name because the prefix is a routing concern, not part of the model name
+// the provider API expects. A bare name (no slash) is returned unchanged.
+func stripModelPrefix(model string) string {
+	if _, bare, ok := strings.Cut(model, "/"); ok {
+		return bare
+	}
+	return model
+}
+
 // decryptProjectConfig decrypts a project-level provider config.
 func (s *CredentialService) decryptProjectConfig(cfg *ProjectProviderConfig) (*ResolvedCredential, error) {
 	if s.encryptor == nil {
@@ -129,8 +142,8 @@ func (s *CredentialService) decryptProjectConfig(cfg *ProjectProviderConfig) (*R
 		GCPProject:      cfg.GCPProject,
 		Location:        cfg.Location,
 		BaseURL:         cfg.BaseURL,
-		GenerativeModel: cfg.GenerativeModel,
-		EmbeddingModel:  cfg.EmbeddingModel,
+		GenerativeModel: stripModelPrefix(cfg.GenerativeModel),
+		EmbeddingModel:  stripModelPrefix(cfg.EmbeddingModel),
 	}
 	switch cfg.Provider {
 	case ProviderGoogleAI:
@@ -379,12 +392,7 @@ func (s *CredentialService) UpsertProjectConfig(ctx context.Context, projectID s
 	// Embedding-only configs (e.g. Google gemini-embedding-*) must not be forced
 	// through a generative test — the API key may have no generative scope.
 	if req.GenerativeModel != "" || req.EmbeddingModel == "" {
-		// Strip provider prefix for test call (e.g. "openai/deepseek-v4-flash" → "deepseek-v4-flash")
-		// The prefix is needed for model routing but must NOT be sent to the API.
 		testCred := *tempCred
-		if _, bareModel, hasPrefix := strings.Cut(testCred.GenerativeModel, "/"); hasPrefix {
-			testCred.GenerativeModel = bareModel
-		}
 		if _, _, err := s.catalog.TestGenerate(testCtx, provider, &testCred); err != nil {
 			return nil, apperror.NewBadRequest(fmt.Sprintf("generative model test failed: %s", err.Error()))
 		}
@@ -599,8 +607,8 @@ func (s *CredentialService) buildTempResolvedCred(provider ProviderType, req Ups
 		Provider:        provider,
 		GCPProject:      req.GCPProject,
 		Location:        req.Location,
-		GenerativeModel: req.GenerativeModel,
-		EmbeddingModel:  req.EmbeddingModel,
+		GenerativeModel: stripModelPrefix(req.GenerativeModel),
+		EmbeddingModel:  stripModelPrefix(req.EmbeddingModel),
 	}
 	switch provider {
 	case ProviderGoogleAI:

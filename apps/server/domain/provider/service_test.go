@@ -95,6 +95,24 @@ func TestEncryptCredential_NoKey(t *testing.T) {
 	}
 }
 
+func TestStripModelPrefix(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"openai/deepseek-v4-flash", "deepseek-v4-flash"},
+		{"google/gemini-embedding-2-preview", "gemini-embedding-2-preview"},
+		{"google-vertex/gemini-2.5-flash", "gemini-2.5-flash"},
+		{"deepseek-v4-pro", "deepseek-v4-pro"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := stripModelPrefix(c.in); got != c.want {
+			t.Errorf("stripModelPrefix(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 // TestDecryptProjectConfig verifies that decryptProjectConfig correctly decrypts
 // a Vertex AI project config and populates all credential fields.
 func TestDecryptProjectConfig(t *testing.T) {
@@ -120,8 +138,8 @@ func TestDecryptProjectConfig(t *testing.T) {
 		EncryptionNonce:     nonce,
 		GCPProject:          "proj-gcp",
 		Location:            "europe-west4",
-		EmbeddingModel:      "custom-embed",
-		GenerativeModel:     "custom-gen",
+		EmbeddingModel:      "google-vertex/custom-embed",
+		GenerativeModel:     "google-vertex/custom-gen",
 	}
 
 	resolved, err := svc.decryptProjectConfig(projCfg)
