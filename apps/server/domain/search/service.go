@@ -351,6 +351,7 @@ func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, r
 			ObjectType:    item.Object.Type,
 			Key:           key,
 			Fields:        item.Object.Properties,
+			Labels:        item.Object.Labels,
 			Score:         item.Score,
 			Rank:          i + 1,
 			LexicalScore:  item.LexicalScore,
@@ -865,6 +866,7 @@ func (s *Service) graphResultToItem(g *UnifiedSearchGraphResult) UnifiedSearchRe
 		ObjectType:    g.ObjectType,
 		Key:           g.Key,
 		Fields:        g.Fields,
+		Labels:        g.Labels,
 		Relationships: g.Relationships,
 		Explanation:   g.Explanation,
 	}
