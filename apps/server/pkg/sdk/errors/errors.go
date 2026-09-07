@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // Error represents an error returned by the Emergent API.
@@ -18,10 +19,40 @@ type Error struct {
 
 // Error implements the error interface.
 func (e *Error) Error() string {
+	base := fmt.Sprintf("[%d] %s", e.StatusCode, e.Message)
 	if e.Code != "" {
-		return fmt.Sprintf("[%d] %s: %s", e.StatusCode, e.Code, e.Message)
+		base = fmt.Sprintf("[%d] %s: %s", e.StatusCode, e.Code, e.Message)
 	}
-	return fmt.Sprintf("[%d] %s", e.StatusCode, e.Message)
+	if missing := missingScopes(e.Details); len(missing) > 0 {
+		base += fmt.Sprintf(" (missing scope: %s)", strings.Join(missing, ", "))
+	}
+	return base
+}
+
+// missingScopes extracts the "missing" scope list from error details.
+// The server surfaces the required-but-absent scopes under details.missing
+// (e.g. {"missing": ["chat:use"]}); surfacing it here turns a generic
+// "Insufficient permissions" into an actionable message.
+func missingScopes(details map[string]interface{}) []string {
+	if details == nil {
+		return nil
+	}
+	raw, ok := details["missing"]
+	if !ok {
+		return nil
+	}
+	var out []string
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+	case []string:
+		out = append(out, v...)
+	}
+	return out
 }
 
 // IsNotFound returns true if the error is a 404 Not Found error.
