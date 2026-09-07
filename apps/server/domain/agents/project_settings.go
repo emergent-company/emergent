@@ -24,6 +24,7 @@ type ProjectSetting struct {
 const (
 	SettingsCategoryAgentOverride  = "agent_override"
 	SettingsCategoryRememberConfig = "remember_config"
+	SettingsCategoryFeatureFlags   = "feature_flags"
 )
 
 // SettingsKeyRememberAgentName is the project setting key that overrides which
@@ -31,6 +32,11 @@ const (
 // named definition instead of the canonical "domain-remember-agent". Value is
 // stored as {"name":"<agent-definition-name>"} in the JSONB value column.
 const SettingsKeyRememberAgentName = "agent_name"
+
+// SettingsKeyTestLLM enables deterministic test-LLM mode for a project. When set
+// to {"enabled": true}, generate/embeddings calls return canned deterministic
+// responses without invoking a real provider (issue #382).
+const SettingsKeyTestLLM = "test_llm"
 
 // AgentOverride represents a partial agent definition override.
 // Fields that are nil/empty are not overridden — they inherit the canonical defaults.

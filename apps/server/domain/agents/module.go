@@ -28,6 +28,9 @@ import (
 var Module = fx.Module("agents",
 	fx.Provide(
 		NewRepository,
+		NewTestLLMFlagChecker,
+		provideADKTestLLMChecker,
+		provideEmbeddingsTestLLMChecker,
 		provideToolPool,
 		provideSessionService,
 		provideAgentExecutor,
@@ -264,4 +267,14 @@ func registerStaleRunReaper(lc fx.Lifecycle, reaper *StaleRunReaper) {
 			return nil
 		},
 	})
+}
+
+// provideADKTestLLMChecker exposes the test-LLM flag checker to pkg/adk.
+func provideADKTestLLMChecker(c *TestLLMFlagChecker) adk.TestLLMChecker {
+	return c
+}
+
+// provideEmbeddingsTestLLMChecker exposes the test-LLM flag checker to pkg/embeddings.
+func provideEmbeddingsTestLLMChecker(c *TestLLMFlagChecker) embeddings.TestLLMChecker {
+	return c
 }
