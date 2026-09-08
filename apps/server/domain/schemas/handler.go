@@ -2,6 +2,7 @@ package schemas
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 
@@ -73,6 +74,60 @@ func (h *Handler) GetAvailablePacks(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, packs)
+}
+
+// ListPacks handles GET /api/schemas/projects/:projectId — the schema catalog
+// visible to a project (project-owned + global packs), mirroring the MCP
+// schema-list tool so REST callers (e.g. the web gateway's blueprints page) can
+// bypass the MCP handshake.
+// @Summary      List schema packs
+// @Description  Returns schema packs visible to a project (project-owned + global), with optional search and pagination
+// @Tags         schemas
+// @Accept       json
+// @Produce      json
+// @Param        projectId path string true "Project ID (UUID)"
+// @Param        search   query string false "Filter by name/description (case-insensitive substring)"
+// @Param        limit    query int    false "Page size (default 20, max 100)"
+// @Param        offset   query int    false "Pagination offset"
+// @Success      200 {object} SchemaListResponse "Schema catalog"
+// @Failure      400 {object} apperror.Error "Bad request"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/schemas/projects/{projectId} [get]
+// @Security     bearerAuth
+func (h *Handler) ListPacks(c echo.Context) error {
+	projectID := c.Param("projectId")
+	if projectID == "" {
+		return apperror.ErrBadRequest.WithMessage("projectId is required")
+	}
+
+	search := c.QueryParam("search")
+
+	limit := 20
+	if l, err := strconv.Atoi(c.QueryParam("limit")); err == nil && l > 0 {
+		if l > 100 {
+			l = 100
+		}
+		limit = l
+	}
+
+	offset := 0
+	if o, err := strconv.Atoi(c.QueryParam("offset")); err == nil && o > 0 {
+		offset = o
+	}
+
+	packs, total, err := h.svc.ListSchemaPacks(c.Request().Context(), projectID, search, limit, offset)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, SchemaListResponse{
+		ProjectID: projectID,
+		Schemas:   packs,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	})
 }
 
 // GetInstalledPacks handles GET /api/schemas/projects/:projectId/installed

@@ -265,6 +265,29 @@ type MemorySchemaListItem struct {
 	Author      *string `json:"author,omitempty"`
 }
 
+// SchemaListInfo is one row of the schema catalog list (REST mirror of the MCP
+// schema-list tool). project_id is empty for global/built-in schemas. Column
+// values are scanned as strings to match the MCP tool's wire shape exactly.
+type SchemaListInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	ProjectID   string `json:"project_id"`
+	Source      string `json:"source"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// SchemaListResponse is the GET /api/schemas/projects/:projectId payload.
+type SchemaListResponse struct {
+	ProjectID string           `json:"project_id"`
+	Schemas   []SchemaListInfo `json:"schemas"`
+	Total     int              `json:"total"`
+	Limit     int              `json:"limit"`
+	Offset    int              `json:"offset"`
+}
+
 // InstalledSchemaItem represents an installed schema for a project
 type InstalledSchemaItem struct {
 	ID                string                 `json:"id"` // assignment ID

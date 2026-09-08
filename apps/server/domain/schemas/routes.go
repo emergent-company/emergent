@@ -22,6 +22,10 @@ func RegisterRoutes(e *echo.Echo, h *Handler, authMiddleware *auth.Middleware) {
 	projects := g.Group("/projects/:projectId")
 	projects.Use(authMiddleware.RequireProjectScope())
 
+	// List the project-visible schema catalog (project-owned + global packs) —
+	// REST mirror of the MCP schema-list tool.
+	projects.GET("", h.ListPacks)
+
 	// Get available packs for a project
 	projects.GET("/available", h.GetAvailablePacks)
 
