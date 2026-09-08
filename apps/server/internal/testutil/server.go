@@ -400,9 +400,10 @@ func newTestServerWithDB(testDB *TestDB, db bun.IDB) *TestServer {
 	projectsRepo := projects.NewRepository(db, log)
 	agentRepo := agents.NewRepository(db)
 	projectsSvc := projects.NewService(projects.ServiceParams{
-		Repo:      projectsRepo,
-		AgentRepo: agentRepo,
-		Log:       log,
+		Repo:                projectsRepo,
+		AgentRepo:           agentRepo,
+		Log:                 log,
+		OrgMembershipReader: orgsRepo,
 	})
 	projectsHandler := projects.NewHandler(projectsSvc)
 	projects.RegisterRoutes(e, projectsHandler, authMiddleware)

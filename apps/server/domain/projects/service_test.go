@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
 
@@ -113,4 +114,30 @@ func TestNewServiceWiresBranchReader(t *testing.T) {
 		BranchReader: reader,
 	})
 	assert.Equal(t, reader, svc.branchReader)
+}
+
+// =============================================================================
+// Transfer validation — invalid IDs short-circuit before any repo/org lookups.
+// =============================================================================
+
+func TestTransfer_RejectsInvalidIDs(t *testing.T) {
+	svc := newTestService()
+	validUUID := "550e8400-e29b-41d4-a716-446655440000"
+	userID := "00000000-0000-0000-0000-000000000001"
+
+	// Invalid project ID.
+	_, err := svc.Transfer(context.Background(), "not-a-uuid", validUUID, userID)
+	require.Error(t, err)
+	appErr, ok := err.(*apperror.Error)
+	require.True(t, ok)
+	assert.Equal(t, 400, appErr.HTTPStatus)
+	assert.Equal(t, "invalid-uuid", appErr.Code)
+
+	// Invalid destination org ID.
+	_, err = svc.Transfer(context.Background(), validUUID, "not-a-uuid", userID)
+	require.Error(t, err)
+	appErr, ok = err.(*apperror.Error)
+	require.True(t, ok)
+	assert.Equal(t, 400, appErr.HTTPStatus)
+	assert.Equal(t, "invalid-uuid", appErr.Code)
 }

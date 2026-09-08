@@ -195,6 +195,11 @@ func coreFxOptions() fx.Option {
 		fx.Provide(func(branchStore *branches.Store) projects.BranchReader {
 			return branchStore
 		}),
+
+		// Cross-domain wiring: expose orgs.Repository as projects.OrgMembershipReader
+		fx.Provide(func(orgRepo *orgs.Repository) projects.OrgMembershipReader {
+			return orgRepo
+		}),
 	)
 }
 

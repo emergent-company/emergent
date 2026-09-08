@@ -37,6 +37,10 @@ func RegisterRoutes(e *echo.Echo, h *Handler, authMiddleware *auth.Middleware) {
 	// Scope: project:write
 	g.PATCH("/:id", h.Update)
 
+	// Transfer project to another org
+	// Scope: project:write
+	g.POST("/:id/transfer", h.Transfer)
+
 	// Delete project
 	// Scope: org:project:delete
 	g.DELETE("/:id", h.Delete)

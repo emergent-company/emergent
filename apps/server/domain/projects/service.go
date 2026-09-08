@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -37,13 +38,20 @@ type BranchReader interface {
 	GetMainBranchID(ctx context.Context, projectID string) (*string, error)
 }
 
+// OrgMembershipReader returns a user's role in an organization.
+// Satisfied by orgs.Repository via fx injection.
+type OrgMembershipReader interface {
+	GetMembershipRole(ctx context.Context, orgID, userID string) (string, error)
+}
+
 // Service handles business logic for projects
 type Service struct {
-	repo         *Repository
-	agentRepo    *agents.Repository
-	tokenRevoker TokenRevoker // optional; nil is safe
-	branchReader BranchReader // optional; nil is safe
-	log          *slog.Logger
+	repo                *Repository
+	agentRepo           *agents.Repository
+	tokenRevoker        TokenRevoker        // optional; nil is safe
+	branchReader        BranchReader        // optional; nil is safe
+	orgMembershipReader OrgMembershipReader // optional; nil is safe
+	log                 *slog.Logger
 }
 
 // ServiceParams bundles dependencies for NewService.
@@ -55,18 +63,20 @@ type ServiceParams struct {
 	Log       *slog.Logger
 
 	// Optional cross-domain dependencies (nil-safe when not wired).
-	TokenRevoker TokenRevoker `optional:"true"`
-	BranchReader BranchReader `optional:"true"`
+	TokenRevoker        TokenRevoker        `optional:"true"`
+	BranchReader        BranchReader        `optional:"true"`
+	OrgMembershipReader OrgMembershipReader `optional:"true"`
 }
 
 // NewService creates a new project service
 func NewService(p ServiceParams) *Service {
 	return &Service{
-		repo:         p.Repo,
-		agentRepo:    p.AgentRepo,
-		tokenRevoker: p.TokenRevoker,
-		branchReader: p.BranchReader,
-		log:          p.Log.With(logger.Scope("projects.svc")),
+		repo:                p.Repo,
+		agentRepo:           p.AgentRepo,
+		tokenRevoker:        p.TokenRevoker,
+		branchReader:        p.BranchReader,
+		orgMembershipReader: p.OrgMembershipReader,
+		log:                 p.Log.With(logger.Scope("projects.svc")),
 	}
 }
 
@@ -334,6 +344,68 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateProjectReques
 	s.log.Info("project updated",
 		slog.String("projectID", project.ID),
 		slog.String("name", project.Name))
+
+	dto := project.ToDTO()
+	s.enrichWithMainBranch(ctx, &dto)
+	return &dto, nil
+}
+
+// Transfer reparents a project to another organization.
+func (s *Service) Transfer(ctx context.Context, projectID, destOrgID, userID string) (*ProjectDTO, error) {
+	if !isValidUUID(projectID) {
+		return nil, apperror.New(400, "invalid-uuid", "id must be a valid UUID")
+	}
+	if !isValidUUID(destOrgID) {
+		return nil, apperror.New(400, "invalid-uuid", "orgId must be a valid UUID")
+	}
+
+	// Get existing project
+	project, err := s.repo.GetByID(ctx, projectID, false)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, apperror.ErrNotFound.WithMessage("Project not found")
+	}
+
+	sourceOrg := project.OrganizationID
+	if sourceOrg == destOrgID {
+		return nil, apperror.New(400, "bad_request", "Project already belongs to the destination organization")
+	}
+
+	if s.orgMembershipReader == nil {
+		return nil, apperror.ErrInternal.WithInternal(errors.New("org membership reader not configured"))
+	}
+
+	// Requester must be org_admin of the project's current org.
+	role, err := s.orgMembershipReader.GetMembershipRole(ctx, sourceOrg, userID)
+	if err != nil {
+		return nil, err
+	}
+	if role != "org_admin" {
+		return nil, apperror.ErrForbidden.WithMessage("Only an org_admin of the project's current organization can transfer it")
+	}
+
+	// Requester must be a member of the destination org.
+	role, err = s.orgMembershipReader.GetMembershipRole(ctx, destOrgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if role == "" {
+		return nil, apperror.ErrForbidden.WithMessage("You must be a member of the destination organization")
+	}
+
+	if err := s.repo.TransferProject(ctx, projectID, destOrgID); err != nil {
+		return nil, err
+	}
+
+	project.OrganizationID = destOrgID
+
+	s.log.Info("project transferred",
+		slog.String("projectID", project.ID),
+		slog.String("fromOrg", sourceOrg),
+		slog.String("toOrg", destOrgID),
+		slog.String("userID", userID))
 
 	dto := project.ToDTO()
 	s.enrichWithMainBranch(ctx, &dto)

@@ -144,6 +144,11 @@ type CreateProjectRequest struct {
 	OrgID string `json:"orgId" validate:"required,uuid"`
 }
 
+// TransferProjectRequest is the request body for transferring a project to another org.
+type TransferProjectRequest struct {
+	OrgID string `json:"orgId" validate:"required,uuid"`
+}
+
 // UpdateProjectRequest is the request body for updating a project
 type UpdateProjectRequest struct {
 	Name                        *string        `json:"name,omitempty" validate:"omitempty,min=1"`

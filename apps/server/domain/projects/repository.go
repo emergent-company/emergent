@@ -312,6 +312,52 @@ func (r *Repository) Update(ctx context.Context, project *Project) error {
 	return nil
 }
 
+// TransferProject reparents a project to another organization atomically,
+// enforcing name uniqueness within the destination org.
+func (r *Repository) TransferProject(ctx context.Context, projectID, destOrgID string) error {
+	tx, err := database.BeginSafeTx(ctx, r.db)
+	if err != nil {
+		r.log.Error("failed to begin transaction", logger.Error(err))
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+	defer tx.Rollback()
+
+	project, err := r.GetByIDWithLock(ctx, tx.Tx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil || project.DeletedAt != nil {
+		return apperror.ErrNotFound.WithMessage("Project not found")
+	}
+
+	// Enforce case-insensitive name uniqueness within the destination org.
+	duplicate, err := r.CheckDuplicateName(ctx, tx.Tx, destOrgID, project.Name, projectID)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return apperror.New(400, "duplicate", "Project with this name already exists in the destination organization")
+	}
+
+	_, err = tx.NewUpdate().
+		Model((*Project)(nil)).
+		Set("organization_id = ?", destOrgID).
+		Set("updated_at = now()").
+		Where("id = ?", projectID).
+		Exec(ctx)
+	if err != nil {
+		r.log.Error("failed to transfer project", logger.Error(err), slog.String("id", projectID))
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		r.log.Error("failed to commit transaction", logger.Error(err))
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+
+	return nil
+}
+
 // MarkDeleted sets deleted_at and deleted_by on a project so it is immediately
 // hidden from listings. The actual row deletion (hard delete) happens later in
 // a background goroutine.

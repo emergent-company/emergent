@@ -192,6 +192,31 @@ func (r *Repository) IsUserMember(ctx context.Context, orgID, userID string) (bo
 	return exists, nil
 }
 
+// GetMembershipRole returns the user's role in an organization (e.g. "org_admin"
+// or "member"), or an empty string if the user is not a member.
+func (r *Repository) GetMembershipRole(ctx context.Context, orgID, userID string) (string, error) {
+	var role string
+
+	err := r.db.NewSelect().
+		TableExpr("kb.organization_memberships AS om").
+		ColumnExpr("om.role").
+		Where("om.organization_id = ?", orgID).
+		Where("om.user_id = ?", userID).
+		Scan(ctx, &role)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		r.log.Error("failed to get membership role", logger.Error(err),
+			slog.String("orgID", orgID),
+			slog.String("userID", userID))
+		return "", apperror.ErrDatabase.WithInternal(err)
+	}
+
+	return role, nil
+}
+
 // ListMembers returns all members of an organization with their user profile info.
 func (r *Repository) ListMembers(ctx context.Context, orgID string) ([]OrgMemberDTO, error) {
 	var members []OrgMemberDTO

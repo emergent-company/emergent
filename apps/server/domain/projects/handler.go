@@ -190,6 +190,40 @@ func (h *Handler) Update(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
+// Transfer transfers a project to another organization
+// @Summary      Transfer project to another organization
+// @Description  Reparents a project to a destination organization. The project's organization_id becomes the destination org; identity, history, settings and memberships are preserved. The requester must be an org_admin of the project's current org and a member of the destination org.
+// @Tags         projects
+// @Accept       json
+// @Produce      json
+// @Param        id path string true "Project ID (UUID)"
+// @Param        request body TransferProjectRequest true "Project transfer request"
+// @Success      200 {object} Project "Transferred project"
+// @Failure      400 {object} apperror.Error "Invalid request body, project ID, or project already in destination org"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      403 {object} apperror.Error "Forbidden"
+// @Failure      404 {object} apperror.Error "Project not found"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/projects/{id}/transfer [post]
+// @Security     bearerAuth
+func (h *Handler) Transfer(c echo.Context) error {
+	user := auth.MustGetUser(c)
+
+	id := c.Param("id")
+
+	var req TransferProjectRequest
+	if err := c.Bind(&req); err != nil {
+		return apperror.ErrBadRequest.WithMessage("invalid request body")
+	}
+
+	project, err := h.svc.Transfer(c.Request().Context(), id, req.OrgID, user.ID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, project)
+}
+
 // Delete deletes a project by ID
 // @Summary      Delete project
 // @Description  Permanently deletes a project and all associated data
