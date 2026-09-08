@@ -18,6 +18,7 @@ var Module = fx.Module("scheduler",
 		NewConfig,
 		NewScheduler,
 		ProvideStaleJobCleanupTask,
+		ProvideRetrievalTraceCleanupTask,
 	),
 	fx.Invoke(
 		RegisterTasks,
@@ -39,17 +40,33 @@ func ProvideStaleJobCleanupTask(p staleTaskParams) *StaleJobCleanupTask {
 	return NewStaleJobCleanupTask(p.DB, p.Log, p.Cfg.StaleJobMinutes, p.Cfg.DocumentParsingStaleMinutes)
 }
 
+// retrievalTraceTaskParams are the minimal deps needed to build the retrieval
+// trace cleanup task.
+type retrievalTraceTaskParams struct {
+	fx.In
+	DB  *bun.DB
+	Log *slog.Logger
+	Cfg *Config
+}
+
+// ProvideRetrievalTraceCleanupTask creates the retrieval trace cleanup task and
+// makes it available for injection into RegisterTasks.
+func ProvideRetrievalTraceCleanupTask(p retrievalTraceTaskParams) *RetrievalTraceCleanupTask {
+	return NewRetrievalTraceCleanupTask(p.DB, p.Log, p.Cfg.RetrievalTraceRetention)
+}
+
 // TaskParams contains dependencies for creating scheduled tasks
 type TaskParams struct {
 	fx.In
-	Scheduler    *Scheduler
-	DB           *bun.DB
-	Log          *slog.Logger
-	Cfg          *Config
-	StaleJobTask *StaleJobCleanupTask
-	Storage      *storage.Service
-	AppCfg       *appcfg.Config
-	UserSvc      *auth.UserProfileService
+	Scheduler          *Scheduler
+	DB                 *bun.DB
+	Log                *slog.Logger
+	Cfg                *Config
+	StaleJobTask       *StaleJobCleanupTask
+	RetrievalTraceTask *RetrievalTraceCleanupTask
+	Storage            *storage.Service
+	AppCfg             *appcfg.Config
+	UserSvc            *auth.UserProfileService
 }
 
 // RegisterTasks registers all scheduled tasks
@@ -119,6 +136,13 @@ func RegisterTasks(p TaskParams) error {
 	if err := addScheduledTask(p.Scheduler, p.Log, "session_cleanup",
 		p.Cfg.SessionCleanupSchedule, 24*time.Hour, sessionCleanupTask.Run); err != nil {
 		p.Log.Error("failed to register session cleanup task",
+			slog.String("error", err.Error()))
+	}
+
+	// Register retrieval trace cleanup task (daily at 4am by default)
+	if err := addScheduledTask(p.Scheduler, p.Log, "retrieval_trace_cleanup",
+		p.Cfg.RetrievalTraceCleanupSchedule, p.Cfg.RetrievalTraceCleanupInterval, p.RetrievalTraceTask.Run); err != nil {
+		p.Log.Error("failed to register retrieval trace cleanup task",
 			slog.String("error", err.Error()))
 	}
 

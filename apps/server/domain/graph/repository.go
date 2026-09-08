@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -747,6 +749,9 @@ func (r *Repository) GetEdges(ctx context.Context, projectID, canonicalID uuid.U
 		if len(typeFilter) > 0 {
 			q = q.Where("type IN (?)", bun.In(typeFilter))
 		}
+		if params.Limit > 0 {
+			q = q.Limit(params.Limit)
+		}
 		err := q.Scan(ctx)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, nil, apperror.ErrDatabase.WithInternal(err)
@@ -764,6 +769,9 @@ func (r *Repository) GetEdges(ctx context.Context, projectID, canonicalID uuid.U
 		if len(typeFilter) > 0 {
 			q = q.Where("type IN (?)", bun.In(typeFilter))
 		}
+		if params.Limit > 0 {
+			q = q.Limit(params.Limit)
+		}
 		err := q.Scan(ctx)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, nil, apperror.ErrDatabase.WithInternal(err)
@@ -771,6 +779,92 @@ func (r *Repository) GetEdges(ctx context.Context, projectID, canonicalID uuid.U
 	}
 
 	return incoming, outgoing, nil
+}
+
+// EdgesForObject holds the incoming and outgoing relationships for one object.
+type EdgesForObject struct {
+	Incoming []*GraphRelationship
+	Outgoing []*GraphRelationship
+}
+
+// GetEdgesForObjects returns incoming and outgoing relationships for multiple
+// objects by canonical_id in a single batched query. The result map is keyed by
+// canonical ID. Returns an empty map (not an error) when canonicalIDs is empty.
+func (r *Repository) GetEdgesForObjects(ctx context.Context, projectID uuid.UUID, canonicalIDs []uuid.UUID, params GetEdgesParams) (map[uuid.UUID]*EdgesForObject, error) {
+	result := make(map[uuid.UUID]*EdgesForObject)
+
+	if len(canonicalIDs) == 0 {
+		return result, nil
+	}
+
+	// Collect relationship types to filter by (same as GetEdges)
+	var typeFilter []string
+	if params.Type != "" {
+		typeFilter = append(typeFilter, params.Type)
+	}
+	if len(params.Types) > 0 {
+		typeFilter = append(typeFilter, params.Types...)
+	}
+
+	// Get incoming edges (object is destination) unless direction is "outgoing"
+	if params.Direction != "outgoing" {
+		var incoming []*GraphRelationship
+		q := r.db.NewSelect().
+			Model(&incoming).
+			Where("dst_id IN (?)", bun.In(canonicalIDs)).
+			Where("project_id = ?", projectID).
+			Where("supersedes_id IS NULL").
+			Where("deleted_at IS NULL")
+		if len(typeFilter) > 0 {
+			q = q.Where("type IN (?)", bun.In(typeFilter))
+		}
+		if params.Limit > 0 {
+			q = q.Limit(params.Limit)
+		}
+		err := q.Scan(ctx)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, apperror.ErrDatabase.WithInternal(err)
+		}
+		for _, rel := range incoming {
+			entry := result[rel.DstID]
+			if entry == nil {
+				entry = &EdgesForObject{}
+				result[rel.DstID] = entry
+			}
+			entry.Incoming = append(entry.Incoming, rel)
+		}
+	}
+
+	// Get outgoing edges (object is source) unless direction is "incoming"
+	if params.Direction != "incoming" {
+		var outgoing []*GraphRelationship
+		q := r.db.NewSelect().
+			Model(&outgoing).
+			Where("src_id IN (?)", bun.In(canonicalIDs)).
+			Where("project_id = ?", projectID).
+			Where("supersedes_id IS NULL").
+			Where("deleted_at IS NULL")
+		if len(typeFilter) > 0 {
+			q = q.Where("type IN (?)", bun.In(typeFilter))
+		}
+		if params.Limit > 0 {
+			q = q.Limit(params.Limit)
+		}
+		err := q.Scan(ctx)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, apperror.ErrDatabase.WithInternal(err)
+		}
+		for _, rel := range outgoing {
+			entry := result[rel.SrcID]
+			if entry == nil {
+				entry = &EdgesForObject{}
+				result[rel.SrcID] = entry
+			}
+			entry.Outgoing = append(entry.Outgoing, rel)
+		}
+	}
+
+	return result, nil
 }
 
 // AcquireObjectLock acquires an advisory lock for a graph object.
@@ -1509,6 +1603,22 @@ type VectorSearchResult struct {
 	Distance float32
 }
 
+// configuredIVFFlatProbes returns the ivfflat.probes value read from the
+// SEARCH_IVFFLAT_PROBES env var. Defaults to 10 on unset or parse failure and
+// is clamped to at least 1.
+func configuredIVFFlatProbes() int {
+	probes := 10
+	if v := os.Getenv("SEARCH_IVFFLAT_PROBES"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			probes = parsed
+		}
+	}
+	if probes < 1 {
+		probes = 1
+	}
+	return probes
+}
+
 // beginTxWithIVFFlatProbes starts a transaction and sets ivfflat.probes for improved
 // vector index recall. SET LOCAL scopes the setting to the current transaction only.
 func (r *Repository) beginTxWithIVFFlatProbes(ctx context.Context, probes int) (bun.Tx, error) {
@@ -1581,7 +1691,7 @@ func (r *Repository) VectorSearch(ctx context.Context, params VectorSearchParams
 	finalArgs = append(finalArgs, params.Limit, params.Offset)
 
 	// Begin transaction with increased IVFFlat probes for better recall
-	tx, err := r.beginTxWithIVFFlatProbes(ctx, 10)
+	tx, err := r.beginTxWithIVFFlatProbes(ctx, configuredIVFFlatProbes())
 	if err != nil {
 		r.log.Error("vector search: failed to set ivfflat probes", logger.Error(err))
 		return nil, err
@@ -1861,7 +1971,7 @@ func (r *Repository) FindSimilarObjects(ctx context.Context, params SimilarSearc
 	finalArgs = append(finalArgs, params.Limit)
 
 	// Begin transaction with increased IVFFlat probes for better recall
-	tx, err := r.beginTxWithIVFFlatProbes(ctx, 10)
+	tx, err := r.beginTxWithIVFFlatProbes(ctx, configuredIVFFlatProbes())
 	if err != nil {
 		r.log.Error("similar objects search: failed to set ivfflat probes", logger.Error(err))
 		return nil, err

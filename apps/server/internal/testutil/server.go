@@ -176,7 +176,7 @@ func NewTestServerWithLLM(testDB *TestDB) *TestServer {
 	docsSvc := documents.NewService(docsRepo, log)
 
 	searchRepo := search.NewRepository(db, log)
-	searchSvc := search.NewService(searchRepo, graphSvc, embeddingsSvc, log)
+	searchSvc := search.NewService(searchRepo, graphSvc, embeddingsSvc, log, search.NewTraceStore(db, log))
 
 	// Cross-domain tool handlers for mcp.Service (mirrors module.go fx wiring).
 	discoveryRepo := discoveryjobs.NewRepository(db, log)
@@ -461,7 +461,7 @@ func newTestServerWithDB(testDB *TestDB, db bun.IDB) *TestServer {
 
 	// Register search routes
 	searchRepo := search.NewRepository(db, log)
-	searchSvc := search.NewService(searchRepo, graphSvc, embeddingsSvc, log)
+	searchSvc := search.NewService(searchRepo, graphSvc, embeddingsSvc, log, search.NewTraceStore(db, log))
 	searchHandler := search.NewHandler(searchSvc)
 	search.RegisterRoutes(e, searchHandler, authMiddleware)
 

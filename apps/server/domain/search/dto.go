@@ -1,6 +1,8 @@
 package search
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -58,6 +60,7 @@ type UnifiedSearchRequest struct {
 	RecencyBoost        *float32                          `json:"recencyBoost,omitempty"`
 	RecencyHalfLife     *float32                          `json:"recencyHalfLife,omitempty"`
 	AccessBoost         *float32                          `json:"accessBoost,omitempty"`
+	MinScore            *float32                          `json:"minScore,omitempty"` // drop results scoring below this fused score (0-1)
 }
 
 // =============================================================================
@@ -218,6 +221,15 @@ type UnifiedSearchResponse struct {
 	Results  []UnifiedSearchResultItem `json:"results"`
 	Metadata UnifiedSearchMetadata     `json:"metadata"`
 	Debug    *UnifiedSearchDebug       `json:"debug,omitempty"`
+	TraceID  *string                   `json:"traceId,omitempty"` // retrieval trace ID for debugging/reconstruction
+}
+
+// UnifiedSearchTraceResponse is a persisted retrieval trace for a prior search.
+type UnifiedSearchTraceResponse struct {
+	TraceID     string    `json:"traceId"`
+	Query       string    `json:"query"`
+	SelectedIDs []string  `json:"selected_ids"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // =============================================================================

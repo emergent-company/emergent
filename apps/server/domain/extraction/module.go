@@ -244,9 +244,23 @@ type ExtractionConfig struct {
 func NewExtractionConfig(cfg *config.Config) *ExtractionConfig {
 	objCfg := DefaultObjectExtractionConfig()
 	objCfg.SkipStagingBranch = cfg.ExtractionSkipStagingBranch
+
+	// Override embedding worker concurrency/batch/adaptive-scaling from env-driven
+	// app config. GraphRelationshipEmbeddingJobsService reuses GraphEmbeddingConfig,
+	// so the graph override applies to relationship embedding as well.
+	graphCfg := DefaultGraphEmbeddingConfig()
+	graphCfg.WorkerConcurrency = cfg.EmbeddingQueue.GraphConcurrency
+	graphCfg.WorkerBatchSize = cfg.EmbeddingQueue.GraphBatchSize
+	graphCfg.EnableAdaptiveScaling = cfg.EmbeddingQueue.AdaptiveScaling
+
+	chunkCfg := DefaultChunkEmbeddingConfig()
+	chunkCfg.WorkerConcurrency = cfg.EmbeddingQueue.ChunkConcurrency
+	chunkCfg.WorkerBatchSize = cfg.EmbeddingQueue.ChunkBatchSize
+	chunkCfg.EnableAdaptiveScaling = cfg.EmbeddingQueue.AdaptiveScaling
+
 	return &ExtractionConfig{
-		GraphEmbedding:   DefaultGraphEmbeddingConfig(),
-		ChunkEmbedding:   DefaultChunkEmbeddingConfig(),
+		GraphEmbedding:   graphCfg,
+		ChunkEmbedding:   chunkCfg,
 		DocumentParsing:  DefaultDocumentParsingConfig(),
 		ObjectExtraction: objCfg,
 		EmbeddingSweep:   DefaultEmbeddingSweepConfig(),

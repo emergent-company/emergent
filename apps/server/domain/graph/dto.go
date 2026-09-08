@@ -296,6 +296,7 @@ type GetEdgesParams struct {
 	Type      string   // Single relationship type filter
 	Types     []string // Multiple relationship type filters
 	Direction string   // "incoming", "outgoing", or "" (both)
+	Limit     int      // Max edges to return per direction; 0 = unbounded
 }
 
 // ObjectHistoryResponse is the response for version history.
@@ -689,6 +690,7 @@ type TraverseGraphRequest struct {
 	ObjectTypes       []string        `json:"object_types,omitempty"`
 	Labels            []string        `json:"labels,omitempty"`
 	Limit             int             `json:"limit,omitempty"`          // page size, default: 50, max: 1000
+	Offset            int             `json:"offset,omitempty"`         // number of nodes to skip before returning the page
 	PageDirection     string          `json:"page_direction,omitempty"` // "forward" or "backward"
 	Cursor            *string         `json:"cursor,omitempty"`
 	EdgePhases        []EdgePhase     `json:"edgePhases,omitempty"`

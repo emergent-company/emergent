@@ -72,6 +72,9 @@ func (h *Handler) Search(c echo.Context) error {
 	if len(req.Query) > 800 {
 		return apperror.ErrBadRequest.WithMessage("query must be 800 characters or less")
 	}
+	if req.MinScore != nil && (*req.MinScore < 0 || *req.MinScore > 1) {
+		return apperror.ErrBadRequest.WithMessage("minScore must be between 0 and 1")
+	}
 
 	// Get user scopes
 	scopes := user.Scopes
@@ -104,6 +107,32 @@ func (h *Handler) Search(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
+}
+
+// GetTrace handles GET /api/search/trace/:traceId
+// @Summary Get retrieval trace
+// @Description Returns a persisted retrieval trace (query + ordered selected IDs) by trace ID
+// @Tags search
+// @Produce json
+// @Param traceId path string true "Trace ID"
+// @Success 200 {object} UnifiedSearchTraceResponse
+// @Failure 400 {object} apperror.Error
+// @Failure 401 {object} apperror.Error
+// @Failure 404 {object} apperror.Error
+// @Router /api/search/trace/{traceId} [get]
+func (h *Handler) GetTrace(c echo.Context) error {
+	traceIDStr := c.Param("traceId")
+	traceID, err := uuid.Parse(traceIDStr)
+	if err != nil {
+		return apperror.ErrBadRequest.WithMessage("invalid traceId")
+	}
+
+	resp, err := h.svc.GetTrace(c.Request().Context(), traceID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // hasScope checks if the given scope exists in the list

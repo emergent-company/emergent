@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -44,6 +46,19 @@ func (r *Repository) beginTxWithIVFFlatProbes(ctx context.Context, probes int) (
 		return tx, apperror.ErrDatabase.WithInternal(err)
 	}
 	return tx, nil
+}
+
+// configuredIVFFlatProbes returns the ivfflat.probes value to use for vector
+// searches, read from the SEARCH_IVFFLAT_PROBES env var. Defaults to 10 and is
+// clamped to >= 1 so an invalid/empty config never disables index scans.
+func configuredIVFFlatProbes() int {
+	probes := 10
+	if v := os.Getenv("SEARCH_IVFFLAT_PROBES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			probes = n
+		}
+	}
+	return probes
 }
 
 // TextSearchMode defines the type of text search
@@ -145,7 +160,7 @@ func (r *Repository) VectorSearch(ctx context.Context, params TextSearchParams) 
 	vectorStr := pgutils.FormatVector(params.Vector)
 
 	// Begin transaction with increased IVFFlat probes for better recall
-	tx, err := r.beginTxWithIVFFlatProbes(ctx, 10)
+	tx, err := r.beginTxWithIVFFlatProbes(ctx, configuredIVFFlatProbes())
 	if err != nil {
 		r.log.Error("vector search: failed to set ivfflat probes", logger.Error(err))
 		return nil, err
@@ -267,7 +282,7 @@ func (r *Repository) HybridSearch(ctx context.Context, params TextSearchParams) 
 	lexicalRows.Close()
 
 	// Execute vector search with increased IVFFlat probes for better recall
-	tx, err := r.beginTxWithIVFFlatProbes(ctx, 10)
+	tx, err := r.beginTxWithIVFFlatProbes(ctx, configuredIVFFlatProbes())
 	if err != nil {
 		r.log.Error("hybrid search: failed to set ivfflat probes", logger.Error(err))
 		return nil, err
@@ -430,7 +445,7 @@ func (r *Repository) SearchRelationships(ctx context.Context, params Relationshi
 	vectorStr := pgutils.FormatVector(params.Vector)
 
 	// Begin transaction with increased IVFFlat probes for better recall
-	tx, err := r.beginTxWithIVFFlatProbes(ctx, 10)
+	tx, err := r.beginTxWithIVFFlatProbes(ctx, configuredIVFFlatProbes())
 	if err != nil {
 		r.log.Error("relationship search: failed to set ivfflat probes", logger.Error(err))
 		return nil, err

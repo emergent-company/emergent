@@ -8,6 +8,7 @@ import (
 var Module = fx.Module("search",
 	fx.Provide(
 		NewRepository,
+		NewTraceStore,
 		NewService,
 		NewHandler,
 	),

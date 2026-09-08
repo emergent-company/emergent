@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1299,6 +1300,34 @@ func (s *Service) GetEdges(ctx context.Context, projectID, objectID uuid.UUID, p
 		Incoming: incomingResp,
 		Outgoing: outgoingResp,
 	}, nil
+}
+
+// GetEdgesBatch returns incoming and outgoing relationships for multiple
+// canonical IDs in a single batched query. It takes canonical IDs directly —
+// the caller is expected to already hold canonical IDs (no resolution).
+func (s *Service) GetEdgesBatch(ctx context.Context, projectID uuid.UUID, canonicalIDs []uuid.UUID, params GetEdgesParams) (map[uuid.UUID]*GetObjectEdgesResponse, error) {
+	edgesByObject, err := s.repo.GetEdgesForObjects(ctx, projectID, canonicalIDs, params)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := make(map[uuid.UUID]*GetObjectEdgesResponse, len(edgesByObject))
+	for canonicalID, edges := range edgesByObject {
+		incoming := make([]*GraphRelationshipResponse, len(edges.Incoming))
+		for i, r := range edges.Incoming {
+			incoming[i] = r.ToResponse()
+		}
+		outgoing := make([]*GraphRelationshipResponse, len(edges.Outgoing))
+		for i, r := range edges.Outgoing {
+			outgoing[i] = r.ToResponse()
+		}
+		resp[canonicalID] = &GetObjectEdgesResponse{
+			Incoming: incoming,
+			Outgoing: outgoing,
+		}
+	}
+
+	return resp, nil
 }
 
 // computeChangeSummary creates an RFC 6901 JSON Pointer diff.
@@ -3378,24 +3407,60 @@ func (s *Service) TraverseGraph(ctx context.Context, projectID uuid.UUID, req *T
 	}
 
 	elapsedMs := float64(time.Since(startTime).Microseconds()) / 1000.0
-	resultCount := len(nodes)
+
+	// Apply offset+pageSize pagination over the BFS result ordering.
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	hasNext := offset+pageSize < len(nodes)
+
+	// Slice nodes to the current page (guard offset beyond the result set).
+	start := offset
+	if start > len(nodes) {
+		start = len(nodes)
+	}
+	end := start + pageSize
+	if end > len(nodes) {
+		end = len(nodes)
+	}
+	pagedNodes := nodes[start:end]
+
+	// Keep only edges whose endpoints are in the current node page.
+	pagedIDs := make(map[uuid.UUID]bool, len(pagedNodes))
+	for _, n := range pagedNodes {
+		pagedIDs[n.ID] = true
+	}
+	filteredEdges := make([]*TraverseEdge, 0, len(edges))
+	for _, e := range edges {
+		if pagedIDs[e.SrcID] || pagedIDs[e.DstID] {
+			filteredEdges = append(filteredEdges, e)
+		}
+	}
+
+	pagedCount := len(pagedNodes)
+	var nextCursor *string
+	if hasNext {
+		cursor := strconv.Itoa(offset + pageSize)
+		nextCursor = &cursor
+	}
 
 	return &TraverseGraphResponse{
 		Roots:               req.RootIDs,
-		Nodes:               nodes,
-		Edges:               edges,
+		Nodes:               pagedNodes,
+		Edges:               filteredEdges,
 		Truncated:           result.Truncated,
 		MaxDepthReached:     result.MaxDepthReached,
 		TotalNodes:          len(nodes),
-		HasNextPage:         false, // Simplified: no pagination in basic implementation
-		HasPreviousPage:     false,
-		NextCursor:          nil,
+		HasNextPage:         hasNext,
+		HasPreviousPage:     offset > 0,
+		NextCursor:          nextCursor,
 		PreviousCursor:      nil,
-		ApproxPositionStart: 0,
-		ApproxPositionEnd:   resultCount,
+		ApproxPositionStart: offset,
+		ApproxPositionEnd:   offset + pagedCount,
 		PageDirection:       pageDirection,
 		QueryTimeMs:         &elapsedMs,
-		ResultCount:         &resultCount,
+		ResultCount:         &pagedCount,
 	}, nil
 }
 

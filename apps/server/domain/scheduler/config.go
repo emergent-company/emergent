@@ -61,6 +61,18 @@ type Config struct {
 	// SessionRetentionDays is the minimum age (in days) of a completed run before
 	// its ADK session data (events, states, session rows) is deleted. Default: 90.
 	SessionRetentionDays int
+
+	// RetrievalTraceRetention is how long retrieval traces are kept before the
+	// cleanup task deletes them. Default: 720h (30 days).
+	RetrievalTraceRetention time.Duration
+
+	// RetrievalTraceCleanupSchedule is the cron schedule for deleting expired
+	// retrieval traces. Default: "0 0 4 * * *" (daily at 4am).
+	RetrievalTraceCleanupSchedule string
+
+	// RetrievalTraceCleanupInterval is the fallback interval used when the cron
+	// schedule is unset or invalid. Default: 1h.
+	RetrievalTraceCleanupInterval time.Duration
 }
 
 // NewConfig creates a new Config from environment variables
@@ -74,17 +86,20 @@ func NewConfig() *Config {
 		StaleJobMinutes:              getEnvInt("STALE_JOB_MINUTES", 30),
 		DocumentParsingStaleMinutes:  getEnvInt("DOCUMENT_PARSING_STALE_MINUTES", 480),
 		// Cron schedule overrides (empty string means use interval)
-		RevisionCountRefreshSchedule: getEnvString("REVISION_COUNT_REFRESH_SCHEDULE", ""),
-		TagCleanupSchedule:           getEnvString("TAG_CLEANUP_SCHEDULE", ""),
-		CacheCleanupSchedule:         getEnvString("CACHE_CLEANUP_SCHEDULE", ""),
-		StaleJobCleanupSchedule:      getEnvString("STALE_JOB_CLEANUP_SCHEDULE", ""),
-		StaleBackupCleanupInterval:   getEnvDuration("STALE_BACKUP_CLEANUP_INTERVAL_MS", 15*time.Minute),
-		StaleBackupMinutes:           getEnvInt("STALE_BACKUP_MINUTES", 60),
-		StaleBackupCleanupSchedule:   getEnvString("STALE_BACKUP_CLEANUP_SCHEDULE", ""),
-		DatabaseBackupSchedule:       getEnvString("DATABASE_BACKUP_SCHEDULE", "0 0 7 * * *"),
-		ZitadelProfileSyncSchedule:   getEnvString("ZITADEL_PROFILE_SYNC_SCHEDULE", "0 0 * * * *"),
-		SessionCleanupSchedule:       getEnvString("SESSION_CLEANUP_SCHEDULE", "0 0 3 * * *"),
-		SessionRetentionDays:         getEnvInt("SESSION_RETENTION_DAYS", 90),
+		RevisionCountRefreshSchedule:  getEnvString("REVISION_COUNT_REFRESH_SCHEDULE", ""),
+		TagCleanupSchedule:            getEnvString("TAG_CLEANUP_SCHEDULE", ""),
+		CacheCleanupSchedule:          getEnvString("CACHE_CLEANUP_SCHEDULE", ""),
+		StaleJobCleanupSchedule:       getEnvString("STALE_JOB_CLEANUP_SCHEDULE", ""),
+		StaleBackupCleanupInterval:    getEnvDuration("STALE_BACKUP_CLEANUP_INTERVAL_MS", 15*time.Minute),
+		StaleBackupMinutes:            getEnvInt("STALE_BACKUP_MINUTES", 60),
+		StaleBackupCleanupSchedule:    getEnvString("STALE_BACKUP_CLEANUP_SCHEDULE", ""),
+		DatabaseBackupSchedule:        getEnvString("DATABASE_BACKUP_SCHEDULE", "0 0 7 * * *"),
+		ZitadelProfileSyncSchedule:    getEnvString("ZITADEL_PROFILE_SYNC_SCHEDULE", "0 0 * * * *"),
+		SessionCleanupSchedule:        getEnvString("SESSION_CLEANUP_SCHEDULE", "0 0 3 * * *"),
+		SessionRetentionDays:          getEnvInt("SESSION_RETENTION_DAYS", 90),
+		RetrievalTraceRetention:       getEnvDuration("SEARCH_TRACE_RETENTION", 720*time.Hour),
+		RetrievalTraceCleanupSchedule: getEnvString("RETRIEVAL_TRACE_CLEANUP_SCHEDULE", "0 0 4 * * *"),
+		RetrievalTraceCleanupInterval: getEnvDuration("RETRIEVAL_TRACE_CLEANUP_INTERVAL", time.Hour),
 	}
 }
 

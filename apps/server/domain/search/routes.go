@@ -17,4 +17,9 @@ func RegisterRoutes(e *echo.Echo, handler *Handler, authMiddleware *auth.Middlew
 	unified := search.Group("/unified")
 	unified.Use(authMiddleware.RequireAPITokenScopes("search:read"))
 	unified.POST("", handler.Search)
+
+	// Retrieval trace lookup requires search:read scope
+	trace := search.Group("/trace")
+	trace.Use(authMiddleware.RequireAPITokenScopes("search:read"))
+	trace.GET("/:traceId", handler.GetTrace)
 }

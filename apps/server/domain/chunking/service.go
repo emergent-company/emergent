@@ -3,6 +3,7 @@ package chunking
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/emergent-company/emergent.memory/domain/chunks"
+	"github.com/emergent-company/emergent.memory/internal/config"
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 	"github.com/emergent-company/emergent.memory/pkg/textsplitter"
@@ -18,12 +20,30 @@ import (
 type Service struct {
 	db  bun.IDB
 	log *slog.Logger
+
+	// defaultChunkSize / defaultChunkOverlap are the env-backed defaults
+	// (CHUNK_SIZE / CHUNK_OVERLAP, falling back to textsplitter defaults
+	// 1000/200). Per-document chunking_config overrides them per document.
+	defaultChunkSize    int
+	defaultChunkOverlap int
 }
 
-func NewService(db bun.IDB, log *slog.Logger) *Service {
+func NewService(db bun.IDB, cfg *config.Config, log *slog.Logger) *Service {
+	def := textsplitter.DefaultConfig()
+	chunkSize, chunkOverlap := def.ChunkSize, def.ChunkOverlap
+	if cfg != nil {
+		if cfg.Chunking.ChunkSize > 0 {
+			chunkSize = cfg.Chunking.ChunkSize
+		}
+		if cfg.Chunking.ChunkOverlap >= 0 {
+			chunkOverlap = cfg.Chunking.ChunkOverlap
+		}
+	}
 	return &Service{
-		db:  db,
-		log: log.With(logger.Scope("chunking.svc")),
+		db:                  db,
+		log:                 log.With(logger.Scope("chunking.svc")),
+		defaultChunkSize:    chunkSize,
+		defaultChunkOverlap: chunkOverlap,
 	}
 }
 
@@ -79,7 +99,18 @@ func (s *Service) RecreateChunks(ctx context.Context, projectID, documentID stri
 		oldCount = 0
 	}
 
-	cfg := textsplitter.DefaultConfig()
+	cfg := textsplitter.Config{
+		ChunkSize:    s.defaultChunkSize,
+		ChunkOverlap: s.defaultChunkOverlap,
+	}
+	if projChunkSize, projChunkOverlap := s.loadProjectChunkingConfig(ctx, projectID); projChunkSize != nil || projChunkOverlap != nil {
+		if projChunkSize != nil && *projChunkSize > 0 {
+			cfg.ChunkSize = *projChunkSize
+		}
+		if projChunkOverlap != nil && *projChunkOverlap >= 0 {
+			cfg.ChunkOverlap = *projChunkOverlap
+		}
+	}
 	textChunks := textsplitter.Split(content.String, cfg)
 
 	if len(textChunks) == 0 {
@@ -185,4 +216,29 @@ func (s *Service) RecreateChunks(ctx context.Context, projectID, documentID stri
 			},
 		},
 	}, nil
+}
+
+// loadProjectChunkingConfig reads the project-level kb.projects.chunking_config
+// JSONB and returns the effective chunk overrides. The JSON carries
+// maxChunkSize (chunk size) and overlap (chunk overlap); pointers distinguish
+// "absent" from an explicit zero overlap. Missing column, missing row, or
+// malformed JSON yield nils (callers fall back to env/default).
+func (s *Service) loadProjectChunkingConfig(ctx context.Context, projectID string) (chunkSize *int, chunkOverlap *int) {
+	var raw []byte
+	err := s.db.NewSelect().
+		TableExpr("kb.projects").
+		Column("chunking_config").
+		Where("id = ?", projectID).
+		Scan(ctx, &raw)
+	if err != nil || len(raw) == 0 {
+		return nil, nil
+	}
+	var projCfg struct {
+		MaxChunkSize *int `json:"maxChunkSize"`
+		Overlap      *int `json:"overlap"`
+	}
+	if jsonErr := json.Unmarshal(raw, &projCfg); jsonErr != nil {
+		return nil, nil
+	}
+	return projCfg.MaxChunkSize, projCfg.Overlap
 }

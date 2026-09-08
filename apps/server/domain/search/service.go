@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/emergent-company/emergent.memory/domain/graph"
+	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/embeddings"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 	"github.com/emergent-company/emergent.memory/pkg/tracing"
@@ -23,8 +25,14 @@ type Service struct {
 	repo         *Repository
 	graphService *graph.Service
 	embeddings   *embeddings.Service
+	traceStore   *TraceStore
 	log          *slog.Logger
 	defaultLimit int
+	maxLimit     int
+	rrfConstant  int
+	graphWeight  float32
+	textWeight   float32
+	relWeight    float32
 }
 
 // NewService creates a new search service
@@ -33,6 +41,7 @@ func NewService(
 	graphService *graph.Service,
 	embeddingsSvc *embeddings.Service,
 	log *slog.Logger,
+	traceStore *TraceStore,
 ) *Service {
 	defaultLimit := 32
 	if v := os.Getenv("MEMORY_SEARCH_DEFAULT_LIMIT"); v != "" {
@@ -44,9 +53,35 @@ func NewService(
 		repo:         repo,
 		graphService: graphService,
 		embeddings:   embeddingsSvc,
+		traceStore:   traceStore,
 		log:          log.With(logger.Scope("search.svc")),
 		defaultLimit: defaultLimit,
+		maxLimit:     envIntDefault("SEARCH_MAX_LIMIT", 100),
+		rrfConstant:  envIntDefault("SEARCH_RRF_CONSTANT", 60),
+		graphWeight:  envFloatDefault("SEARCH_GRAPH_WEIGHT", 0.25),
+		textWeight:   envFloatDefault("SEARCH_TEXT_WEIGHT", 0.75),
+		relWeight:    envFloatDefault("SEARCH_RELATIONSHIP_WEIGHT", 0),
 	}
+}
+
+// envIntDefault reads an integer env var, returning def on empty/parse error.
+func envIntDefault(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+// envFloatDefault reads a float32 env var, returning def on empty/parse error.
+func envFloatDefault(key string, def float32) float32 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 32); err == nil {
+			return float32(f)
+		}
+	}
+	return def
 }
 
 // Search executes unified search combining graph and text results
@@ -106,6 +141,9 @@ func (s *Service) Search(ctx context.Context, projectID uuid.UUID, req *UnifiedS
 	// Fuse results
 	fusedResults, fusionElapsed := s.fuse(graphResults, textRes.results, relationshipRes.results, fusionStrategy, req.Weights, limit)
 
+	// Fused cutoff: drop any fused item below the requested min score (nil/0 keeps baseline).
+	fusedResults = filterBelowMinScore(fusedResults, req.MinScore, func(i UnifiedSearchResultItem) float32 { return i.Score })
+
 	// Count result types
 	graphCount, textCount, relationshipCount := s.countTypes(fusedResults)
 
@@ -121,11 +159,93 @@ func (s *Service) Search(ctx context.Context, projectID uuid.UUID, req *UnifiedS
 	span.SetAttributes(attribute.Int("memory.search.result_count", len(fusedResults)))
 	span.SetStatus(codes.Ok, "")
 
-	return &UnifiedSearchResponse{
+	resp := &UnifiedSearchResponse{
 		Results:  fusedResults,
 		Metadata: metadata,
 		Debug:    debug,
-	}, nil
+	}
+
+	// Persist a retrieval trace (best-effort, asynchronous) when tracing is enabled
+	if s.traceStore != nil {
+		traceID := uuid.New()
+		traceIDStr := traceID.String()
+		resp.TraceID = &traceIDStr
+		s.persistTraceAsync(traceID, projectID, req, graphRes.results, textRes.results, relationshipRes.results, fusedResults)
+	}
+
+	return resp, nil
+}
+
+// persistTraceAsync writes a retrieval trace record in a background goroutine.
+// It is best-effort: failures only log a warning and never fail the request.
+func (s *Service) persistTraceAsync(traceID uuid.UUID, projectID uuid.UUID, req *UnifiedSearchRequest, graphResults []*UnifiedSearchGraphResult, textResults []*TextSearchResult, relationshipResults []*RelationshipSearchResult, fusedResults []UnifiedSearchResultItem) {
+	go func() {
+		filters := map[string]any{
+			"resultTypes":    req.ResultTypes,
+			"fusionStrategy": req.FusionStrategy,
+		}
+		if req.Weights != nil {
+			filters["weights"] = req.Weights
+		}
+		if req.MinScore != nil {
+			filters["minScore"] = *req.MinScore
+		}
+
+		const maxTraceCandidates = 200
+		candidates := make([]traceCandidate, 0, maxTraceCandidates)
+		addCandidate := func(id, typ string, score float32) {
+			if len(candidates) >= maxTraceCandidates {
+				return
+			}
+			candidates = append(candidates, traceCandidate{ID: id, Type: typ, Score: score})
+		}
+		for _, g := range graphResults {
+			addCandidate(g.ObjectID, string(ItemTypeGraph), g.Score)
+		}
+		for _, t := range textResults {
+			addCandidate(t.ID.String(), string(ItemTypeText), t.Score)
+		}
+		for _, r := range relationshipResults {
+			addCandidate(r.ID.String(), string(ItemTypeRelationship), r.Score)
+		}
+
+		selectedIDs := make([]string, len(fusedResults))
+		selectedScores := make([]float32, len(fusedResults))
+		for i, item := range fusedResults {
+			selectedIDs[i] = item.ID
+			selectedScores[i] = item.Score
+		}
+
+		trace := &RetrievalTrace{
+			ProjectID:   projectID,
+			TraceID:     traceID,
+			Query:       req.Query,
+			Filters:     marshalJSON(filters),
+			Candidates:  marshalJSON(candidates),
+			SelectedIDs: marshalJSON(selectedIDs),
+			Scores:      marshalJSON(selectedScores),
+		}
+
+		if err := s.traceStore.Insert(context.Background(), trace); err != nil {
+			s.log.Warn("failed to persist retrieval trace", logger.Error(err), slog.String("trace_id", traceID.String()))
+		}
+	}()
+}
+
+// traceCandidate is a compact (id, type, score) entry stored in the trace candidates list.
+type traceCandidate struct {
+	ID    string  `json:"id"`
+	Type  string  `json:"type"`
+	Score float32 `json:"score"`
+}
+
+// marshalJSON serializes v to JSON, returning nil on error.
+func marshalJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // graphOutcome wraps graph search results with timing and debug data
@@ -158,8 +278,8 @@ func (s *Service) clampLimit(limit int) int {
 	if limit <= 0 {
 		return s.defaultLimit
 	}
-	if limit > 100 {
-		return 100
+	if limit > s.maxLimit {
+		return s.maxLimit
 	}
 	return limit
 }
@@ -206,7 +326,7 @@ func (s *Service) runParallelSearches(ctx context.Context, projectID uuid.UUID, 
 			return
 		}
 		start := time.Now()
-		results, rawDebug, err := s.executeGraphSearch(ctx, projectID, req, searchCtx, queryVector)
+		results, rawDebug, err := s.executeGraphSearch(ctx, projectID, req, searchCtx, queryVector, req.MinScore)
 		graphCh <- graphOutcome{results: results, elapsed: time.Since(start), rawDebug: rawDebug, err: err}
 	}()
 
@@ -217,7 +337,7 @@ func (s *Service) runParallelSearches(ctx context.Context, projectID uuid.UUID, 
 			return
 		}
 		start := time.Now()
-		results, mode, rawDebug, err := s.executeTextSearch(ctx, projectID, req, queryVector)
+		results, mode, rawDebug, err := s.executeTextSearch(ctx, projectID, req, queryVector, req.MinScore)
 		textCh <- textOutcome{results: results, mode: mode, elapsed: time.Since(start), rawDebug: rawDebug, err: err}
 	}()
 
@@ -228,7 +348,7 @@ func (s *Service) runParallelSearches(ctx context.Context, projectID uuid.UUID, 
 			return
 		}
 		start := time.Now()
-		results, rawDebug, err := s.executeRelationshipSearch(ctx, projectID, req, queryVector)
+		results, rawDebug, err := s.executeRelationshipSearch(ctx, projectID, req, queryVector, req.MinScore)
 		relCh <- relationshipOutcome{results: results, elapsed: time.Since(start), rawDebug: rawDebug, err: err}
 	}()
 
@@ -300,7 +420,7 @@ func (s *Service) makeMetadata(
 
 // executeGraphSearch runs the graph search using the graph service.
 // If queryVector is non-nil, it is used directly; otherwise falls back to embedding the query.
-func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, searchCtx *SearchContext, queryVector []float32) ([]*UnifiedSearchGraphResult, any, error) {
+func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, searchCtx *SearchContext, queryVector []float32, minScore *float32) ([]*UnifiedSearchGraphResult, any, error) {
 	// Use pre-computed vector if available, otherwise embed independently (standalone call path)
 	vector := queryVector
 	if len(vector) == 0 && s.embeddings != nil {
@@ -361,6 +481,9 @@ func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, r
 		graphObjectIDs = append(graphObjectIDs, item.Object.ID)
 	}
 
+	// Per-mode cutoff: drop graph results below the requested min score (nil/0 keeps baseline).
+	results = filterBelowMinScore(results, minScore, func(g *UnifiedSearchGraphResult) float32 { return g.Score })
+
 	// Track access asynchronously (don't block response)
 	if len(graphObjectIDs) > 0 {
 		go func() {
@@ -382,7 +505,7 @@ func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, r
 
 // executeTextSearch runs text search on document chunks.
 // If queryVector is non-nil, it is used directly; otherwise falls back to embedding the query.
-func (s *Service) executeTextSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, queryVector []float32) ([]*TextSearchResult, string, any, error) {
+func (s *Service) executeTextSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, queryVector []float32, minScore *float32) ([]*TextSearchResult, string, any, error) {
 	// Use pre-computed vector if available, otherwise embed independently (standalone call path)
 	vector := queryVector
 	if len(vector) == 0 && s.embeddings != nil {
@@ -419,6 +542,9 @@ func (s *Service) executeTextSearch(ctx context.Context, projectID uuid.UUID, re
 		return nil, "", nil, err
 	}
 
+	// Per-mode cutoff: drop chunk results below the requested min score (nil/0 keeps baseline).
+	resp.Results = filterBelowMinScore(resp.Results, minScore, func(t *TextSearchResult) float32 { return t.Score })
+
 	// Return raw debug info
 	var rawDebug any
 	if req.IncludeDebug {
@@ -430,7 +556,7 @@ func (s *Service) executeTextSearch(ctx context.Context, projectID uuid.UUID, re
 
 // executeRelationshipSearch runs relationship vector search.
 // If queryVector is non-nil, it is used directly; otherwise falls back to embedding the query.
-func (s *Service) executeRelationshipSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, queryVector []float32) ([]*RelationshipSearchResult, any, error) {
+func (s *Service) executeRelationshipSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, queryVector []float32, minScore *float32) ([]*RelationshipSearchResult, any, error) {
 	// Use pre-computed vector if available, otherwise embed independently (standalone call path)
 	vector := queryVector
 	if len(vector) == 0 && s.embeddings != nil {
@@ -457,6 +583,9 @@ func (s *Service) executeRelationshipSearch(ctx context.Context, projectID uuid.
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Per-mode cutoff: drop relationship results below the requested min score (nil/0 keeps baseline).
+	resp.Results = filterBelowMinScore(resp.Results, minScore, func(r *RelationshipSearchResult) float32 { return r.Score })
 
 	var rawDebug any
 	if req.IncludeDebug {
@@ -523,19 +652,32 @@ func (s *Service) expandRelationships(ctx context.Context, projectID uuid.UUID, 
 		return results
 	}
 
-	// Collect object IDs
-	objectIDs := make([]uuid.UUID, len(results))
-	for i, r := range results {
-		objectIDs[i] = uuid.MustParse(r.ObjectID)
+	// Collect canonical IDs (relationships are stored against canonical IDs).
+	// Dedupe so the batch query does not repeat the same object.
+	canonicalIDs := make([]uuid.UUID, 0, len(results))
+	seen := make(map[uuid.UUID]bool, len(results))
+	for _, r := range results {
+		cid := uuid.MustParse(r.CanonicalID)
+		if !seen[cid] {
+			seen[cid] = true
+			canonicalIDs = append(canonicalIDs, cid)
+		}
+	}
+
+	// Batch fetch edges for all objects in a single round-trip (N+1 elimination).
+	edgesByObject, err := s.graphService.GetEdgesBatch(ctx, projectID, canonicalIDs, graph.GetEdgesParams{})
+	if err != nil {
+		s.log.Warn("failed to expand relationships", logger.Error(err))
+		return results
 	}
 
 	// Build relationship map for each object
-	relationshipMap := make(map[string][]UnifiedSearchRelationship)
+	relationshipMap := make(map[string][]UnifiedSearchRelationship, len(results))
 
-	for _, objID := range objectIDs {
-		edgesResp, err := s.graphService.GetEdges(ctx, projectID, objID, graph.GetEdgesParams{})
-		if err != nil {
-			s.log.Warn("failed to expand relationships", logger.Error(err), slog.String("object_id", objID.String()))
+	for _, r := range results {
+		cid := uuid.MustParse(r.CanonicalID)
+		edgesResp, ok := edgesByObject[cid]
+		if !ok {
 			continue
 		}
 
@@ -570,7 +712,7 @@ func (s *Service) expandRelationships(ctx context.Context, projectID uuid.UUID, 
 			rels = rels[:options.MaxNeighbors]
 		}
 
-		relationshipMap[objID.String()] = rels
+		relationshipMap[r.ObjectID] = rels
 	}
 
 	// Attach relationships to results
@@ -603,9 +745,9 @@ func (s *Service) fuseResults(graphResults []*UnifiedSearchGraphResult, textResu
 
 // fuseWeighted combines results using weighted scores
 func (s *Service) fuseWeighted(graphResults []*UnifiedSearchGraphResult, textResults []*TextSearchResult, relationshipResults []*RelationshipSearchResult, weights *UnifiedSearchWeights, limit int) []UnifiedSearchResultItem {
-	graphWeight := float32(0.25)
-	textWeight := float32(0.75)
-	relationshipWeight := float32(0)
+	graphWeight := s.graphWeight
+	textWeight := s.textWeight
+	relationshipWeight := s.relWeight
 
 	if weights != nil {
 		if weights.GraphWeight > 0 {
@@ -689,7 +831,7 @@ func (s *Service) fuseWeighted(graphResults []*UnifiedSearchGraphResult, textRes
 
 // fuseRRF combines results using Reciprocal Rank Fusion
 func (s *Service) fuseRRF(graphResults []*UnifiedSearchGraphResult, textResults []*TextSearchResult, relationshipResults []*RelationshipSearchResult, limit int) []UnifiedSearchResultItem {
-	const k = 60
+	k := s.rrfConstant
 
 	graphSet := rrfResultSet{results: make([]rrfResult, len(graphResults))}
 	for i, g := range graphResults {
@@ -967,6 +1109,52 @@ func (s *Service) buildDebugInfo(graphDebug, textDebug, relationshipDebug any, g
 		ScoreDistribution: scoreDistribution,
 		FusionDetails:     fusionDetails,
 	}
+}
+
+// filterBelowMinScore drops items whose score is below the configured min score
+// cutoff. No-op when minScore is nil or <= 0 so the exact baseline result set
+// is preserved unless a positive threshold is requested.
+func filterBelowMinScore[T any](results []T, minScore *float32, scoreOf func(T) float32) []T {
+	if minScore == nil || *minScore <= 0 {
+		return results
+	}
+	kept := results[:0]
+	for _, r := range results {
+		if scoreOf(r) >= *minScore {
+			kept = append(kept, r)
+		}
+	}
+	return kept
+}
+
+// GetTrace returns a persisted retrieval trace by its trace ID, reconstructing
+// the ordered list of selected result IDs stored at search time.
+func (s *Service) GetTrace(ctx context.Context, traceID uuid.UUID) (*UnifiedSearchTraceResponse, error) {
+	if s.traceStore == nil {
+		return nil, apperror.ErrNotFound.WithMessage("retrieval trace not found")
+	}
+
+	trace, err := s.traceStore.GetByTraceID(ctx, traceID)
+	if err != nil {
+		return nil, err
+	}
+	if trace == nil {
+		return nil, apperror.ErrNotFound.WithMessage("retrieval trace not found")
+	}
+
+	var selectedIDs []string
+	if len(trace.SelectedIDs) > 0 {
+		if err := json.Unmarshal(trace.SelectedIDs, &selectedIDs); err != nil {
+			s.log.Warn("failed to parse retrieval trace selected_ids", logger.Error(err), slog.String("trace_id", traceID.String()))
+		}
+	}
+
+	return &UnifiedSearchTraceResponse{
+		TraceID:     trace.TraceID.String(),
+		Query:       trace.Query,
+		SelectedIDs: selectedIDs,
+		CreatedAt:   trace.CreatedAt,
+	}, nil
 }
 
 // calcScoreStats calculates min, max, mean for a slice of scores

@@ -71,6 +71,12 @@ type Config struct {
 	// Graph knowledge base configuration
 	Graph GraphConfig
 
+	// Chunking configuration
+	Chunking ChunkingConfig
+
+	// Embedding job queue configuration
+	EmbeddingQueue EmbeddingQueueConfig
+
 	// Skills configuration
 	Skills SkillsConfig
 
@@ -101,12 +107,15 @@ type Config struct {
 
 // DatabaseConfig holds PostgreSQL connection settings
 type DatabaseConfig struct {
-	Host         string        `env:"POSTGRES_HOST" envDefault:"localhost"`
-	Port         int           `env:"POSTGRES_PORT" envDefault:"5432"`
-	User         string        `env:"POSTGRES_USER" envDefault:"emergent"`
-	Password     string        `env:"POSTGRES_PASSWORD" envDefault:""`
-	Database     string        `env:"POSTGRES_DB" envDefault:"emergent"`
-	SSLMode      string        `env:"POSTGRES_SSL_MODE" envDefault:"disable"`
+	Host     string `env:"POSTGRES_HOST" envDefault:"localhost"`
+	Port     int    `env:"POSTGRES_PORT" envDefault:"5432"`
+	User     string `env:"POSTGRES_USER" envDefault:"emergent"`
+	Password string `env:"POSTGRES_PASSWORD" envDefault:""`
+	Database string `env:"POSTGRES_DB" envDefault:"emergent"`
+	SSLMode  string `env:"POSTGRES_SSL_MODE" envDefault:"disable"`
+	// MaxOpenConns is the pgx pool maximum connections. For multi-tenant deployments
+	// with concurrent retrieval + embedding + graph writes, raise above the 25 default
+	// (e.g. 100) to avoid pool saturation under load.
 	MaxOpenConns int           `env:"DB_MAX_OPEN_CONNS" envDefault:"25"`
 	MaxIdleConns int           `env:"DB_MAX_IDLE_CONNS" envDefault:"5"`
 	MaxIdleTime  time.Duration `env:"DB_MAX_IDLE_TIME" envDefault:"5m"`
@@ -461,6 +470,29 @@ type GraphConfig struct {
 	// DefaultListLimit is the default number of items returned by list endpoints when no limit is specified.
 	// Default: 100.
 	DefaultListLimit int `env:"GRAPH_DEFAULT_LIST_LIMIT" envDefault:"100"`
+}
+
+// ChunkingConfig holds configuration for text chunking.
+type ChunkingConfig struct {
+	// ChunkSize is the default chunk size in characters. Default: 1000.
+	ChunkSize int `env:"CHUNK_SIZE" envDefault:"1000"`
+	// ChunkOverlap is the default chunk overlap in characters. Default: 200.
+	ChunkOverlap int `env:"CHUNK_OVERLAP" envDefault:"200"`
+}
+
+// EmbeddingQueueConfig holds configuration for the embedding job worker queues.
+type EmbeddingQueueConfig struct {
+	// GraphConcurrency is the graph embedding worker concurrency. Default: 200.
+	GraphConcurrency int `env:"GRAPH_EMBEDDING_CONCURRENCY" envDefault:"200"`
+	// GraphBatchSize is the graph embedding batch size. Default: 200.
+	GraphBatchSize int `env:"GRAPH_EMBEDDING_BATCH_SIZE" envDefault:"200"`
+	// ChunkConcurrency is the chunk embedding worker concurrency. Default: 10.
+	ChunkConcurrency int `env:"CHUNK_EMBEDDING_CONCURRENCY" envDefault:"10"`
+	// ChunkBatchSize is the chunk embedding batch size. Default: 10.
+	ChunkBatchSize int `env:"CHUNK_EMBEDDING_BATCH_SIZE" envDefault:"10"`
+	// AdaptiveScaling enables dynamic concurrency adjustment based on system health.
+	// Default: true.
+	AdaptiveScaling bool `env:"EMBEDDING_ADAPTIVE_SCALING" envDefault:"true"`
 }
 
 // SkillsConfig holds configuration for the skills domain.
