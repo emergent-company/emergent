@@ -105,6 +105,30 @@ func (r *Repository) Update(ctx context.Context, id string, req *UpdateProfileRe
 	return r.GetByID(ctx, id)
 }
 
+// SetAvatar upserts the avatar object key for a profile. A nil key clears the
+// avatar. Returns ErrNotFound if the profile does not exist.
+func (r *Repository) SetAvatar(ctx context.Context, id string, key *string) error {
+	query := r.db.NewUpdate().
+		Model((*Profile)(nil)).
+		Where("id = ?", id).
+		Where("deleted_at IS NULL").
+		Set("avatar_object_key = ?", key).
+		Set("updated_at = ?", time.Now())
+
+	result, err := query.Exec(ctx)
+	if err != nil {
+		r.log.Error("failed to set profile avatar", logger.Error(err))
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound.WithMessage("user profile not found")
+	}
+
+	return nil
+}
+
 // GetEmail retrieves the primary verified email for a user
 func (r *Repository) GetEmail(ctx context.Context, userID string) (string, error) {
 	var email string

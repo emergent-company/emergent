@@ -1,6 +1,9 @@
 package userprofile
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -8,6 +11,18 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
+
+// maxAvatarSize is the maximum accepted avatar upload size (512 KiB).
+const maxAvatarSize = 1 << 19
+
+// allowedAvatarTypes are the image content types accepted for avatars,
+// matching the sniffed output of http.DetectContentType.
+var allowedAvatarTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
+	"image/gif":  true,
+}
 
 // Handler handles HTTP requests for user profiles
 type Handler struct {
@@ -83,6 +98,124 @@ func (h *Handler) Update(c echo.Context) error {
 	}
 
 	profile, err := h.svc.Update(c.Request().Context(), user.ID, &req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, profile)
+}
+
+// Upload handles avatar image uploads (multipart field "file").
+// @Summary      Upload avatar
+// @Description  Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB)
+// @Tags         user-profile
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file formData file true "Avatar image file"
+// @Success      200 {object} ProfileDTO "Updated profile"
+// @Failure      400 {object} apperror.Error "Bad request"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      413 {object} apperror.Error "File too large"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/user/avatar [put]
+// @Security     bearerAuth
+func (h *Handler) Upload(c echo.Context) error {
+	user := auth.GetUser(c)
+	if user == nil {
+		return apperror.ErrUnauthorized
+	}
+
+	// Enforce the byte limit before the multipart body is parsed to temp disk.
+	// Headroom above maxAvatarSize covers multipart framing overhead.
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, maxAvatarSize+1024)
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return apperror.New(http.StatusRequestEntityTooLarge, "avatar_too_large", "avatar image must be 512 KiB or smaller")
+		}
+		return apperror.ErrBadRequest.WithMessage("file is required")
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return apperror.ErrBadRequest.WithMessage("failed to read file")
+	}
+	defer src.Close()
+
+	// Enforce the size limit by reading at most maxAvatarSize+1 bytes. If the
+	// read exceeds the limit the file is too large.
+	data, err := io.ReadAll(io.LimitReader(src, maxAvatarSize+1))
+	if err != nil {
+		return apperror.ErrBadRequest.WithMessage("failed to read file")
+	}
+	if int64(len(data)) > maxAvatarSize {
+		return apperror.New(http.StatusRequestEntityTooLarge, "avatar_too_large", "avatar image must be 512 KiB or smaller")
+	}
+
+	// Sniff magic bytes rather than trusting the client-declared content type.
+	contentType := http.DetectContentType(data)
+	if !allowedAvatarTypes[contentType] {
+		return apperror.ErrBadRequest.WithMessage("unsupported image type: only PNG, JPEG, WEBP, and GIF images are allowed")
+	}
+
+	profile, err := h.svc.UploadAvatar(c.Request().Context(), user.ID, bytes.NewReader(data), int64(len(data)), contentType)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, profile)
+}
+
+// GetAvatar streams the authenticated user's avatar image.
+// @Summary      Get avatar
+// @Description  Returns the authenticated user's avatar image
+// @Tags         user-profile
+// @Produce      image/png, image/jpeg, image/webp, image/gif
+// @Success      200 {file} binary "Avatar image"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      404 {object} apperror.Error "No avatar"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/user/avatar [get]
+// @Security     bearerAuth
+func (h *Handler) GetAvatar(c echo.Context) error {
+	user := auth.GetUser(c)
+	if user == nil {
+		return apperror.ErrUnauthorized
+	}
+
+	body, contentType, err := h.svc.GetAvatar(c.Request().Context(), user.ID)
+	if err != nil {
+		return err
+	}
+	defer body.Close()
+
+	c.Response().Header().Set(echo.HeaderContentType, contentType)
+	if _, err := io.Copy(c.Response(), body); err != nil {
+		return apperror.ErrInternal.WithInternal(err)
+	}
+
+	return nil
+}
+
+// DeleteAvatar removes the authenticated user's avatar.
+// @Summary      Delete avatar
+// @Description  Removes the authenticated user's avatar image
+// @Tags         user-profile
+// @Produce      json
+// @Success      200 {object} ProfileDTO "Updated profile"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/user/avatar [delete]
+// @Security     bearerAuth
+func (h *Handler) DeleteAvatar(c echo.Context) error {
+	user := auth.GetUser(c)
+	if user == nil {
+		return apperror.ErrUnauthorized
+	}
+
+	profile, err := h.svc.RemoveAvatar(c.Request().Context(), user.ID)
 	if err != nil {
 		return err
 	}

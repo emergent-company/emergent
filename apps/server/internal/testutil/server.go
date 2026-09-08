@@ -415,7 +415,7 @@ func newTestServerWithDB(testDB *TestDB, db bun.IDB) *TestServer {
 
 	// Register userprofile routes
 	userProfileRepo := userprofile.NewRepository(db, log)
-	userProfileSvc := userprofile.NewService(userProfileRepo, log)
+	userProfileSvc := userprofile.NewService(userProfileRepo, storageSvc, log)
 	userProfileHandler := userprofile.NewHandler(userProfileSvc)
 	userprofile.RegisterRoutes(e, userProfileHandler, authMiddleware)
 
