@@ -279,48 +279,6 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, resu
 	return nil
 }
 
-// doJSONWithStatus is like doJSON but also returns the HTTP status code.
-func (c *Client) doJSONWithStatus(ctx context.Context, method, path string, body any, result any) (int, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return 0, fmt.Errorf("failed to marshal request: %w", err)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bodyReader)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	c.setAuth(req)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return resp.StatusCode, sdkerrors.ParseErrorResponse(resp)
-	}
-
-	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return resp.StatusCode, fmt.Errorf("failed to decode response: %w", err)
-		}
-	} else {
-		_, _ = io.Copy(io.Discard, resp.Body)
-	}
-
-	return resp.StatusCode, nil
-}
-
 // --- API Methods ---
 
 // Ping checks that the ACP endpoint is reachable.

@@ -86,7 +86,7 @@ func TestListSessionTodos_WithStatusFilter_BuildsQueryParam(t *testing.T) {
 		capturedQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]*agents.SessionTodo{})
+		_ = json.NewEncoder(w).Encode([]*agents.SessionTodo{})
 	})
 
 	client := newAgentsClient(t, mock.URL)
