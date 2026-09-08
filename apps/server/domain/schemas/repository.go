@@ -1,6 +1,7 @@
 package schemas
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"database/sql"
@@ -70,6 +71,19 @@ func (r *Repository) GetCompiledTypesByProject(ctx context.Context, projectID st
 
 		tp := pp.MemorySchema
 
+		// Type-level UI config may be declared either inline per type (a "ui"
+		// key inside the object type schema, as blueprint manifests write it)
+		// or in the pack's top-level ui_configs map (typeName → {icon, color}),
+		// which the schema registry surfaces today. Prefer the inline form and
+		// fall back to ui_configs so both conventions reach the compiled view.
+		uiConfigs := map[string]json.RawMessage{}
+		if len(tp.UIConfigs) > 0 {
+			if err := json.Unmarshal(tp.UIConfigs, &uiConfigs); err != nil {
+				uiConfigs = map[string]json.RawMessage{}
+				r.log.Warn("failed to parse ui_configs", logger.Error(err))
+			}
+		}
+
 		// Parse object type schemas (supports both array and map storage formats)
 		if len(tp.ObjectTypeSchemas) > 0 {
 			objectTypes := parseObjectTypeSchemas(tp.ObjectTypeSchemas, tp.ID, tp.Name, tp.Version)
@@ -77,6 +91,7 @@ func (r *Repository) GetCompiledTypesByProject(ctx context.Context, projectID st
 				r.log.Warn("failed to parse object type schemas",
 					slog.String("packId", tp.ID))
 			} else {
+				applyUIConfigFallback(objectTypes, uiConfigs)
 				for i := range objectTypes {
 					if prevIdx, seen := seenObjIdx[objectTypes[i].Name]; seen {
 						// Mark the earlier one as shadowed
@@ -108,6 +123,27 @@ func (r *Repository) GetCompiledTypesByProject(ctx context.Context, projectID st
 	}
 
 	return response, nil
+}
+
+// applyUIConfigFallback fills each object type's ui metadata from the pack's
+// top-level ui_configs map (typeName → {icon, color}) when the type declares no
+// inline ui of its own. ui_configs entries whose raw value is a JSON null are
+// treated as absent.
+func applyUIConfigFallback(objectTypes []ObjectTypeSchema, uiConfigs map[string]json.RawMessage) {
+	for i := range objectTypes {
+		if len(objectTypes[i].UI) == 0 {
+			if cfg, ok := uiConfigs[objectTypes[i].Name]; ok && !isNullJSON(cfg) {
+				objectTypes[i].UI = cfg
+			}
+		}
+	}
+}
+
+// isNullJSON reports whether raw is the JSON literal null, ignoring surrounding
+// whitespace. An explicit "ui": null must be treated as absent so it neither
+// blocks the ui_configs fallback nor leaks "ui":null into the compiled output.
+func isNullJSON(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 // GetAvailablePacks returns schemas available for a project to install.
@@ -383,13 +419,18 @@ func parseObjectTypeSchemas(data json.RawMessage, packID, packName, packVersion 
 			Label       string          `json:"label"`
 			Description string          `json:"description"`
 			Properties  json.RawMessage `json:"properties"`
+			UI          json.RawMessage `json:"ui"`
 		}
 		_ = json.Unmarshal(raw, &def)
+		if isNullJSON(def.UI) {
+			def.UI = nil
+		}
 		result = append(result, ObjectTypeSchema{
 			Name:          typeName,
 			Label:         def.Label,
 			Description:   def.Description,
 			Properties:    def.Properties,
+			UI:            def.UI,
 			SchemaID:      packID,
 			SchemaName:    packName,
 			SchemaVersion: packVersion,
@@ -416,6 +457,7 @@ func parseObjectTypeSchemasToMap(data json.RawMessage) map[string]json.RawMessag
 		Label       string          `json:"label"`
 		Description string          `json:"description"`
 		Properties  json.RawMessage `json:"properties"`
+		UI          json.RawMessage `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
 		result := make(map[string]json.RawMessage, len(arr))
@@ -428,6 +470,9 @@ func parseObjectTypeSchemasToMap(data json.RawMessage) map[string]json.RawMessag
 			schema := map[string]json.RawMessage{}
 			if len(item.Properties) > 0 {
 				schema["properties"] = item.Properties
+			}
+			if len(item.UI) > 0 && !isNullJSON(item.UI) {
+				schema["ui"] = item.UI
 			}
 			if item.Label != "" {
 				lb, _ := json.Marshal(item.Label)
