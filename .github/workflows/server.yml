@@ -37,7 +37,7 @@ jobs:
         with:
           version: v2.13.2
           working-directory: apps/server
-          install-mode: goinstall
+          install-mode: binary
           only-new-issues: true
 
       - name: Architectural debt ratchet
