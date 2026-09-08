@@ -185,6 +185,42 @@ func (r *Repository) GetAvailablePacks(ctx context.Context, projectID string) ([
 	return packs, nil
 }
 
+// ListSchemaPacks returns the schema catalog visible to a project — the
+// project's own packs plus global ones (project_id IS NULL) — mirroring the MCP
+// schema-list tool so REST consumers can bypass the MCP handshake. Rows are
+// ordered by updated_at DESC and paginated; total ignores limit/offset.
+func (r *Repository) ListSchemaPacks(ctx context.Context, projectID, search string, limit, offset int) ([]SchemaListInfo, int, error) {
+	rows := make([]SchemaListInfo, 0)
+	q := r.db.NewSelect().
+		TableExpr("kb.graph_schemas").
+		Column("id", "name", "version", "description", "project_id", "source", "created_at", "updated_at")
+	if projectID != "" {
+		q = q.Where("project_id = ? OR project_id IS NULL", projectID)
+	}
+	if search != "" {
+		q = q.Where("name ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+	if err := q.Order("updated_at DESC").Limit(limit).Offset(offset).Scan(ctx, &rows); err != nil {
+		r.log.Error("failed to list schema packs", logger.Error(err))
+		return nil, 0, apperror.NewInternal("failed to list schema packs", err)
+	}
+
+	var total int
+	countQ := r.db.NewSelect().TableExpr("kb.graph_schemas")
+	if projectID != "" {
+		countQ = countQ.Where("project_id = ? OR project_id IS NULL", projectID)
+	}
+	if search != "" {
+		countQ = countQ.Where("name ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+	if err := countQ.ColumnExpr("COUNT(*)").Scan(ctx, &total); err != nil {
+		r.log.Warn("failed to count schema packs", logger.Error(err))
+		total = len(rows)
+	}
+
+	return rows, total, nil
+}
+
 // GetInstalledPacks returns schemas installed for a project
 func (r *Repository) GetInstalledPacks(ctx context.Context, projectID string) ([]InstalledSchemaItem, error) {
 	var results []struct {
