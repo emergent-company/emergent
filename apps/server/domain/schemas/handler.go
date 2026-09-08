@@ -98,17 +98,22 @@ func (h *Handler) GetAvailablePacks(c echo.Context) error {
 func (h *Handler) ListPacks(c echo.Context) error {
 	projectID := c.Param("projectId")
 	if projectID == "" {
-		return apperror.ErrBadRequest.WithMessage("projectId is required")
+		return apperror.NewBadRequest("projectId is required")
 	}
 
 	search := c.QueryParam("search")
 
+	// Same clamp as the MCP schema-list tool: absent/invalid keeps the default
+	// of 20; values below 1 are clamped to 1 and above 100 to 100.
 	limit := 20
-	if l, err := strconv.Atoi(c.QueryParam("limit")); err == nil && l > 0 {
-		if l > 100 {
-			l = 100
-		}
+	if l, err := strconv.Atoi(c.QueryParam("limit")); err == nil {
 		limit = l
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 100 {
+		limit = 100
 	}
 
 	offset := 0

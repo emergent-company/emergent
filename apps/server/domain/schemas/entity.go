@@ -266,14 +266,19 @@ type MemorySchemaListItem struct {
 }
 
 // SchemaListInfo is one row of the schema catalog list (REST mirror of the MCP
-// schema-list tool). project_id is empty for global/built-in schemas. Column
-// values are scanned as strings to match the MCP tool's wire shape exactly.
+// schema-list tool). Its field names, types and json tags are verbatim copies of
+// the MCP tool's SchemaInfo (domain/mcp/schema_tools.go) so consumers can swap
+// transports 1:1: visibility is always emitted ("" for global rows) while
+// project_id and org_id are omitted for rows that have no project/org scope.
+// Column values are scanned as strings to match the MCP tool's wire shape.
 type SchemaListInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Description string `json:"description"`
-	ProjectID   string `json:"project_id"`
+	Visibility  string `json:"visibility"`
+	ProjectID   string `json:"project_id,omitempty"`
+	OrgID       string `json:"org_id,omitempty"`
 	Source      string `json:"source"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`

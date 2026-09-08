@@ -202,7 +202,7 @@ func (r *Repository) ListSchemaPacks(ctx context.Context, projectID, search stri
 	}
 	if err := q.Order("updated_at DESC").Limit(limit).Offset(offset).Scan(ctx, &rows); err != nil {
 		r.log.Error("failed to list schema packs", logger.Error(err))
-		return nil, 0, apperror.ErrDatabase.WithInternal(err)
+		return nil, 0, apperror.NewInternal("failed to list schema packs", err)
 	}
 
 	var total int
