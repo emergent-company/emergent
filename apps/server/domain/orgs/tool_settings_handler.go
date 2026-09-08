@@ -22,10 +22,7 @@ import (
 // @Router       /api/admin/orgs/{orgId}/tool-settings [get]
 // @Security     bearerAuth
 func (h *Handler) handleListOrgToolSettings(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	orgID := c.Param("orgId")
 
@@ -54,10 +51,7 @@ func (h *Handler) handleListOrgToolSettings(c echo.Context) error {
 // @Router       /api/admin/orgs/{orgId}/tool-settings/{toolName} [put]
 // @Security     bearerAuth
 func (h *Handler) handleUpsertOrgToolSetting(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	orgID := c.Param("orgId")
 	toolName := c.Param("toolName")
@@ -90,10 +84,7 @@ func (h *Handler) handleUpsertOrgToolSetting(c echo.Context) error {
 // @Router       /api/admin/orgs/{orgId}/tool-settings/{toolName} [delete]
 // @Security     bearerAuth
 func (h *Handler) handleDeleteOrgToolSetting(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	orgID := c.Param("orgId")
 	toolName := c.Param("toolName")

@@ -198,6 +198,24 @@ func (s *Service) validateObjectProperties(ctx context.Context, projectID uuid.U
 	return validated, nil
 }
 
+// resolveSchemaVersion returns the current schema pack version string for an
+// object type (e.g. "1.0.0"), or empty string when unknown or unavailable.
+// Used to stamp graph_objects.schema_version on create so the drift scan can
+// compare against the compiled schema version instead of seeing NULL.
+func (s *Service) resolveSchemaVersion(ctx context.Context, projectID uuid.UUID, objType string) string {
+	if s.schemaProvider == nil {
+		return ""
+	}
+	schemas, err := s.schemaProvider.GetProjectSchemas(ctx, projectID.String())
+	if err != nil || schemas == nil {
+		return ""
+	}
+	if schema, ok := schemas.ObjectSchemas[objType]; ok {
+		return schema.Version
+	}
+	return ""
+}
+
 // nameFromProps extracts the "name" property from a properties map, or returns an empty string.
 func nameFromProps(props map[string]any) string {
 	if props == nil {
@@ -642,6 +660,10 @@ func (s *Service) Create(ctx context.Context, projectID uuid.UUID, req *CreateGr
 		obj.Status = &st
 	}
 
+	if v := s.resolveSchemaVersion(ctx, projectID, req.Type); v != "" {
+		obj.SchemaVersion = &v
+	}
+
 	if err := s.repo.Create(ctx, obj); err != nil {
 		return nil, err
 	}
@@ -689,6 +711,8 @@ func (s *Service) CreateOrUpdate(ctx context.Context, projectID uuid.UUID, req *
 		return nil, false, err
 	}
 
+	schemaVersion := s.resolveSchemaVersion(ctx, projectID, req.Type)
+
 	// Start transaction
 	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
@@ -723,6 +747,9 @@ func (s *Service) CreateOrUpdate(ctx context.Context, projectID uuid.UUID, req *
 			ActorType:  &actorType,
 			ActorID:    actorID,
 		}
+		if schemaVersion != "" {
+			obj.SchemaVersion = &schemaVersion
+		}
 
 		if err := s.repo.CreateInTx(ctx, tx.Tx, obj); err != nil {
 			return nil, false, err
@@ -754,6 +781,9 @@ func (s *Service) CreateOrUpdate(ctx context.Context, projectID uuid.UUID, req *
 			ActorID:    actorID,
 		}
 		newVersion.ChangeSummary = computeChangeSummary(existing.Properties, validatedProps)
+		if schemaVersion != "" {
+			newVersion.SchemaVersion = &schemaVersion
+		}
 
 		if err := s.repo.CreateVersion(ctx, tx.Tx, existing, newVersion); err != nil {
 			return nil, false, err
@@ -820,6 +850,9 @@ func (s *Service) CreateOrUpdate(ctx context.Context, projectID uuid.UUID, req *
 		ActorID:    actorID,
 	}
 	newVersion.ChangeSummary = diff
+	if schemaVersion != "" {
+		newVersion.SchemaVersion = &schemaVersion
+	}
 
 	if err := s.repo.CreateVersion(ctx, tx.Tx, existing, newVersion); err != nil {
 		return nil, false, err
@@ -2603,19 +2636,6 @@ func (s *Service) HybridSearch(ctx context.Context, projectID uuid.UUID, req *Hy
 	}
 
 	return resp, nil
-}
-
-// calcStdDev calculates standard deviation from mean.
-func calcStdDev(scores []float32, mean float32) float64 {
-	if len(scores) == 0 {
-		return 0
-	}
-	var sumSq float64
-	for _, s := range scores {
-		diff := float64(s - mean)
-		sumSq += diff * diff
-	}
-	return math.Sqrt(sumSq / float64(len(scores)))
 }
 
 // zScoreNormalize applies z-score normalization.
@@ -4534,8 +4554,10 @@ func (s *Service) CreateSubgraph(ctx context.Context, projectID uuid.UUID, req *
 
 		// Validate properties against schema
 		validatedProps := objReq.Properties
+		schemaVersion := ""
 		if schemas != nil {
 			if schema, ok := schemas.ObjectSchemas[objReq.Type]; ok {
+				schemaVersion = schema.Version
 				start := time.Now()
 				validated, err := validateProperties(objReq.Properties, schema)
 				duration := time.Since(start)
@@ -4559,6 +4581,9 @@ func (s *Service) CreateSubgraph(ctx context.Context, projectID uuid.UUID, req *
 			Labels:     objReq.Labels,
 			ActorType:  &actorType,
 			ActorID:    actorID,
+		}
+		if schemaVersion != "" {
+			obj.SchemaVersion = &schemaVersion
 		}
 
 		if err := s.repo.CreateInTx(ctx, tx.Tx, obj); err != nil {

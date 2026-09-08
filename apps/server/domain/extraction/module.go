@@ -166,6 +166,11 @@ var Module = fx.Module("extraction",
 		provideEmbeddingSweepWorker,
 		// Expose DomainClassifierHandler for chat handler to pre-classify documents.
 		NewMCPDomainClassifierHandler,
+		// Expose cross-domain tool adapters to mcp.Service via fx (no setter injection).
+		provideEmbeddingControlHandlerForMCP,
+		provideSchemaIndexForMCP,
+		provideReextractionQueuerForMCP,
+		provideDocumentSignalsReaderForMCP,
 	),
 	fx.Invoke(
 		RegisterSysHealthMonitorLifecycle,
@@ -178,39 +183,28 @@ var Module = fx.Module("extraction",
 		RegisterDocumentParsingWorkerLifecycle,
 		RegisterObjectExtractionWorkerLifecycle,
 		RegisterEmbeddingSweepWorkerLifecycle,
-		registerEmbeddingControlHandlerWithMCP,
-		registerDomainToolsWithMCP,
 	),
 )
 
-// registerEmbeddingControlHandlerWithMCP injects the EmbeddingControlHandler into
-// the MCP service so MCP tools can pause/resume/inspect embedding workers.
-func registerEmbeddingControlHandlerWithMCP(mcpService *mcp.Service, handler *EmbeddingControlHandler) {
-	mcpService.SetEmbeddingControlHandler(handler)
+// provideEmbeddingControlHandlerForMCP exposes the embedding control handler as
+// mcp.EmbeddingControlHandler so MCP tools can pause/resume/inspect embedding workers.
+func provideEmbeddingControlHandlerForMCP(handler *EmbeddingControlHandler) mcp.EmbeddingControlHandler {
+	return handler
 }
 
-// registerDomainToolsWithMCP injects domain classification, schema index, and reextraction
-// adapters into the MCP service so the domain tools are available to agents.
-func registerDomainToolsWithMCP(
-	mcpService *mcp.Service,
-	schemaProvider *MemorySchemaProvider,
-	objJobsSvc *ObjectExtractionJobsService,
-	docService *documents.Service,
-	modelFactory *adk.ModelFactory,
-	cachedEmbeds *CachedEmbeddingService,
-	log *slog.Logger,
-) {
-	// Wire embedding service into schema provider so GetInstalledSchemaSummaries
-	// pre-computes pack/type embeddings for vector classification.
-	schemaProvider.WithEmbeddingService(cachedEmbeds)
-	classifier := NewDomainClassifierMCPAdapter(modelFactory, cachedEmbeds, schemaProvider, docService, log)
-	schemaIndex := NewSchemaIndexMCPAdapter(schemaProvider)
-	reextraction := NewReextractionQueuerMCPAdapter(objJobsSvc)
+// provideSchemaIndexForMCP exposes the schema index adapter as mcp.SchemaIndexHandler.
+func provideSchemaIndexForMCP(schemaProvider *MemorySchemaProvider) mcp.SchemaIndexHandler {
+	return NewSchemaIndexMCPAdapter(schemaProvider)
+}
 
-	mcpService.SetDomainClassifier(classifier)
-	mcpService.SetSchemaIndex(schemaIndex)
-	mcpService.SetReextractionQueuer(reextraction)
-	mcpService.SetDocumentSignalsReader(docService)
+// provideReextractionQueuerForMCP exposes the reextraction queuer as mcp.ReextractionQueuer.
+func provideReextractionQueuerForMCP(objJobsSvc *ObjectExtractionJobsService) mcp.ReextractionQueuer {
+	return NewReextractionQueuerMCPAdapter(objJobsSvc)
+}
+
+// provideDocumentSignalsReaderForMCP exposes documents.Service as mcp.DocumentSignalsReader.
+func provideDocumentSignalsReaderForMCP(docService *documents.Service) mcp.DocumentSignalsReader {
+	return docService
 }
 
 // NewMCPDomainClassifierHandler creates a DomainClassifierHandler for injection into

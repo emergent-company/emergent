@@ -65,3 +65,11 @@ type ModelResolver interface {
 type ModelWrapper interface {
 	WrapModel(inner adkmodel.LLM, provider string) adkmodel.LLM
 }
+
+// TestLLMChecker reports whether a project has deterministic test-LLM mode
+// enabled. When true, ModelFactory returns a canned model that never calls a
+// real provider. Implemented by domain/agents.TestLLMFlagChecker and injected
+// optionally via fx.
+type TestLLMChecker interface {
+	IsTestLLM(ctx context.Context, projectID string) bool
+}

@@ -168,7 +168,7 @@ func (p *schemaProviderAdapter) GetProjectSchemas(ctx context.Context, projectID
 				continue
 			}
 
-			schema := agents.ObjectSchema{Name: typeName}
+			schema := agents.ObjectSchema{Name: typeName, Version: pack.Version}
 
 			if desc, ok := schemaMap["description"].(string); ok {
 				schema.Description = desc

@@ -57,8 +57,10 @@ Report: classification result and schema action.`
 //   - "ask"        — pause and ask the user before creating a new schema pack
 //
 // The agent definition is user-editable: after first creation the user can customise the
-// system prompt, model, and tool policies via the normal agent management API.
-// EnsureDomainRememberAgent applies canonical tool list and prompt only on first creation.
+// system prompt, model, tools, and other fields via the normal agent management API.
+// Canonical tool list and prompt are applied only on first creation; on subsequent calls
+// the definition is returned as-is (except the finalize-discovery tool policy, which
+// follows the per-request schema_policy gate).
 //
 // Safe to call concurrently — a race between two callers results in one insert and one
 // subsequent read (FindDefinitionByName will find the winner's row).
@@ -68,10 +70,12 @@ func (r *Repository) EnsureDomainRememberAgent(ctx context.Context, projectID st
 		return nil, fmt.Errorf("failed to look up domain-remember-agent: %w", err)
 	}
 
-	// If it already exists, return it as-is. Unlike graph-insert-agent we do NOT
-	// overwrite user customisations on every call — the agent is user-editable.
-	// We do update the tool_policies, tools, and system prompt to match the
-	// canonical definition so improvements take effect.
+	// If it already exists, return it as-is: the definition is user-editable, so
+	// we do NOT overwrite user customisations to the system prompt or tools list.
+	// The one exception is the finalize-discovery tool policy, which encodes the
+	// per-request schema_policy gate (Confirm for "ask", Disabled for
+	// "reuse_only"). That gate is request-driven safety enforcement, not user
+	// customisation, so it stays in sync on every call.
 	if existing != nil {
 		changed := false
 		// Sync tool_policies for finalize-discovery based on schema_policy.
@@ -85,25 +89,9 @@ func (r *Repository) EnsureDomainRememberAgent(ctx context.Context, projectID st
 			existing.ToolPolicies = desired
 			changed = true
 		}
-		// Always keep the canonical system prompt in sync so prompt improvements
-		// take effect on existing agents without requiring manual recreation.
-		if existing.SystemPrompt == nil || *existing.SystemPrompt != domainRememberAgentSystemPrompt {
-			sp := domainRememberAgentSystemPrompt
-			existing.SystemPrompt = &sp
-			changed = true
-		}
-		// Sync tools list so removals (e.g. classify-document when pre-classifying) propagate.
-		canonicalTools := []string{
-			"finalize-discovery",
-			"queue-reextraction",
-		}
-		if !sliceEq(existing.Tools, canonicalTools) {
-			existing.Tools = canonicalTools
-			changed = true
-		}
 		if changed {
 			if updateErr := r.UpdateDefinition(ctx, existing); updateErr != nil {
-				slog.Warn("domain-remember-agent: failed to sync definition",
+				slog.Warn("domain-remember-agent: failed to sync tool policy",
 					"projectID", projectID,
 					"error", updateErr,
 				)
@@ -188,14 +176,8 @@ func (r *Repository) EnsureEnrichRememberAgent(ctx context.Context, projectID st
 		return nil, fmt.Errorf("failed to look up enrich-remember-agent: %w", err)
 	}
 	if existing != nil {
-		// Sync system prompt so improvements take effect on existing agents.
-		if existing.SystemPrompt == nil || *existing.SystemPrompt != RememberPromptV8Enrich {
-			sp := RememberPromptV8Enrich
-			existing.SystemPrompt = &sp
-			if updateErr := r.UpdateDefinition(ctx, existing); updateErr != nil {
-				slog.Warn("enrich-remember-agent: failed to sync prompt", "error", updateErr)
-			}
-		}
+		// Return the user-editable definition as-is. The system prompt is not
+		// overwritten, so user customisations stick.
 		return existing, nil
 	}
 

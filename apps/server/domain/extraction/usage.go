@@ -104,7 +104,7 @@ func recordEmbeddingUsage(
 		return
 	}
 
-	providerType := provider.ProviderType(result.Provider)
+	var providerType provider.ProviderType
 	// Map our provider strings to the ProviderType enum
 	switch result.Provider {
 	case "vertex":

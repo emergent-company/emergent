@@ -15,11 +15,10 @@ import (
 )
 
 type Service struct {
-	logger    *slog.Logger
-	baseDir   string
-	cache     map[string]*Document
-	cacheMu   sync.RWMutex
-	indexJSON []byte
+	logger  *slog.Logger
+	baseDir string
+	cache   map[string]*Document
+	cacheMu sync.RWMutex
 }
 
 func NewService(logger *slog.Logger) *Service {

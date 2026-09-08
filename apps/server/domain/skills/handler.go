@@ -43,10 +43,6 @@ func NewHandler(repo *Repository, log *slog.Logger, superadmin *superadmin.Repos
 // @Router       /api/skills [get]
 // @Security     bearerAuth
 func (h *Handler) ListGlobalSkills(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	skills, err := h.repo.FindAll(c.Request().Context(), nil, nil)
 	if err != nil {
@@ -75,10 +71,7 @@ func (h *Handler) ListGlobalSkills(c echo.Context) error {
 // @Router       /api/skills [post]
 // @Security     bearerAuth
 func (h *Handler) CreateGlobalSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Creating a global skill requires superadmin privileges.
 	if h.superadmin != nil {
@@ -128,10 +121,6 @@ func (h *Handler) CreateGlobalSkill(c echo.Context) error {
 // @Router       /api/skills/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id, err := parseSkillID(c)
 	if err != nil {
@@ -161,10 +150,6 @@ func (h *Handler) GetSkill(c echo.Context) error {
 // @Router       /api/skills/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id, err := parseSkillID(c)
 	if err != nil {
@@ -200,10 +185,6 @@ func (h *Handler) UpdateSkill(c echo.Context) error {
 // @Router       /api/skills/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id, err := parseSkillID(c)
 	if err != nil {
@@ -231,10 +212,6 @@ func (h *Handler) DeleteSkill(c echo.Context) error {
 // @Router       /api/orgs/{orgId}/skills [get]
 // @Security     bearerAuth
 func (h *Handler) ListOrgSkills(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 	if orgID == "" {
@@ -268,10 +245,6 @@ func (h *Handler) ListOrgSkills(c echo.Context) error {
 // @Router       /api/orgs/{orgId}/skills [post]
 // @Security     bearerAuth
 func (h *Handler) CreateOrgSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 	if orgID == "" {
@@ -352,10 +325,6 @@ func (h *Handler) DeleteOrgSkill(c echo.Context) error {
 // @Router       /api/projects/{projectId}/skills [get]
 // @Security     bearerAuth
 func (h *Handler) ListProjectSkills(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -392,10 +361,6 @@ func (h *Handler) ListProjectSkills(c echo.Context) error {
 // @Router       /api/projects/{projectId}/skills [post]
 // @Security     bearerAuth
 func (h *Handler) CreateProjectSkill(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {

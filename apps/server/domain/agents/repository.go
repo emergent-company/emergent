@@ -544,9 +544,9 @@ func (r *Repository) FindEnabledByTriggerType(ctx context.Context, triggerType A
 	var agents []*Agent
 	err := r.db.NewSelect().
 		Model(&agents).
-		Join("JOIN kb.projects AS p ON p.id = agent.project_id").
-		Where("agent.enabled = true").
-		Where("agent.trigger_type = ?", triggerType).
+		Join("JOIN kb.projects AS p ON p.id = a.project_id").
+		Where("a.enabled = true").
+		Where("a.trigger_type = ?", triggerType).
 		Where("p.deleted_at IS NULL").
 		Scan(ctx)
 	if err != nil {

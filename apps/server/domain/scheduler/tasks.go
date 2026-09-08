@@ -235,19 +235,28 @@ func (t *StaleJobCleanupTask) cleanupTable(ctx context.Context, cfg jobTableConf
 	}
 	cutoff := time.Now().Add(-time.Duration(effectiveMinutes) * time.Minute)
 
-	var query string
+	var (
+		query string
+		args  []any
+	)
 
 	if cfg.hasStartedAt && cfg.hasCompletedAt {
-		// Tables with started_at and completed_at columns
+		// Tables with started_at and completed_at columns. Mark any non-terminal
+		// job stale when it has an old started_at, or when it never started
+		// (started_at IS NULL) but has an old created_at.
 		query = `
 			UPDATE ` + cfg.table + `
 			SET status = 'failed',
 				` + cfg.errorColumn + ` = 'Job marked as stale during cleanup',
 				completed_at = NOW(),
 				updated_at = NOW()
-		WHERE status IN ('processing', 'running')
-		AND started_at < ?
+		WHERE status IN ('pending', 'processing', 'running')
+		AND (
+			(started_at IS NOT NULL AND started_at < ?)
+			OR (started_at IS NULL AND created_at < ?)
+		)
 		`
+		args = []any{cutoff, cutoff}
 	} else {
 		// Tables without started_at (like email_jobs) - use created_at only
 		query = `
@@ -257,9 +266,10 @@ func (t *StaleJobCleanupTask) cleanupTable(ctx context.Context, cfg jobTableConf
 			WHERE status IN ('pending', 'processing', 'running')
 			AND created_at < ?
 		`
+		args = []any{cutoff}
 	}
 
-	result, err := t.db.ExecContext(ctx, query, cutoff)
+	result, err := t.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}

@@ -1,6 +1,8 @@
 package installer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"testing"
 )
@@ -79,6 +81,36 @@ func TestGetInitSQLTemplate(t *testing.T) {
 		if !containsString(template, s) {
 			t.Errorf("init.sql template missing: %s", s)
 		}
+	}
+}
+
+func TestDockerfileContentHash(t *testing.T) {
+	h1 := dockerfileContentHash("a")
+	h2 := dockerfileContentHash("b")
+
+	// Both must be non-empty 64-char lowercase hex strings.
+	for name, h := range map[string]string{"a": h1, "b": h2} {
+		if len(h) != 64 {
+			t.Errorf("hash of %q: expected 64 chars, got %d", name, len(h))
+		}
+		if _, err := hex.DecodeString(h); err != nil {
+			t.Errorf("hash of %q is not valid hex: %v", name, err)
+		}
+	}
+
+	// Different inputs must produce different hashes.
+	if h1 == h2 {
+		t.Errorf("expected different hashes for different inputs, got %s", h1)
+	}
+
+	// Empty input must equal sha256 of empty input and be deterministic.
+	empty := dockerfileContentHash("")
+	want := sha256.Sum256([]byte(""))
+	if empty != hex.EncodeToString(want[:]) {
+		t.Errorf("hash of empty input: expected %s, got %s", hex.EncodeToString(want[:]), empty)
+	}
+	if dockerfileContentHash("") != empty {
+		t.Errorf("hash of empty input not deterministic")
 	}
 }
 

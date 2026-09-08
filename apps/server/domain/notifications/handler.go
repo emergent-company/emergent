@@ -29,10 +29,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/notifications/stats [get]
 // @Security     bearerAuth
 func (h *Handler) GetStats(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	stats, err := h.svc.GetStats(c.Request().Context(), user.ID)
 	if err != nil {
@@ -53,10 +50,7 @@ func (h *Handler) GetStats(c echo.Context) error {
 // @Router       /api/notifications/counts [get]
 // @Security     bearerAuth
 func (h *Handler) GetCounts(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	counts, err := h.svc.GetCounts(c.Request().Context(), user.ID)
 	if err != nil {
@@ -80,10 +74,7 @@ func (h *Handler) GetCounts(c echo.Context) error {
 // @Router       /api/notifications [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Parse query parameters
 	params := ListParams{
@@ -119,10 +110,7 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/notifications/{id}/read [patch]
 // @Security     bearerAuth
 func (h *Handler) MarkRead(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	notificationID := c.Param("id")
 	if notificationID == "" {
@@ -149,10 +137,7 @@ func (h *Handler) MarkRead(c echo.Context) error {
 // @Router       /api/notifications/{id}/dismiss [delete]
 // @Security     bearerAuth
 func (h *Handler) Dismiss(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	notificationID := c.Param("id")
 	if notificationID == "" {
@@ -176,10 +161,7 @@ func (h *Handler) Dismiss(c echo.Context) error {
 // @Router       /api/notifications/mark-all-read [post]
 // @Security     bearerAuth
 func (h *Handler) MarkAllRead(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	count, err := h.svc.MarkAllRead(c.Request().Context(), user.ID)
 	if err != nil {

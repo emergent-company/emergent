@@ -53,7 +53,7 @@ func TestEnrichWithMainBranch_NoReader(t *testing.T) {
 func TestEnrichWithMainBranch_ReturnsID(t *testing.T) {
 	svc := newTestService()
 	mainID := "branch-abc"
-	svc.SetBranchReader(&stubBranchReader{id: &mainID})
+	svc.branchReader = &stubBranchReader{id: &mainID}
 
 	dto := &ProjectDTO{ID: "proj-1", Name: "test"}
 	svc.enrichWithMainBranch(context.Background(), dto)
@@ -64,7 +64,7 @@ func TestEnrichWithMainBranch_ReturnsID(t *testing.T) {
 
 func TestEnrichWithMainBranch_NoBranch(t *testing.T) {
 	svc := newTestService()
-	svc.SetBranchReader(&stubBranchReader{id: nil}) // project has no branches yet
+	svc.branchReader = &stubBranchReader{id: nil} // project has no branches yet
 
 	dto := &ProjectDTO{ID: "proj-1", Name: "test"}
 	svc.enrichWithMainBranch(context.Background(), dto)
@@ -74,7 +74,7 @@ func TestEnrichWithMainBranch_NoBranch(t *testing.T) {
 
 func TestEnrichWithMainBranch_ErrorIsNonFatal(t *testing.T) {
 	svc := newTestService()
-	svc.SetBranchReader(&stubBranchReader{err: assert.AnError})
+	svc.branchReader = &stubBranchReader{err: assert.AnError}
 
 	dto := &ProjectDTO{ID: "proj-1", Name: "test"}
 	// Must not panic or return error; MainBranchID stays nil
@@ -99,14 +99,18 @@ func TestToDTODoesNotSetMainBranchID(t *testing.T) {
 }
 
 // =============================================================================
-// SetBranchReader wiring
+// NewService wiring
 // =============================================================================
 
-func TestSetBranchReader(t *testing.T) {
-	svc := newTestService()
-	assert.Nil(t, svc.branchReader)
-
+func TestNewServiceWiresBranchReader(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With(logger.Scope("test"))
 	reader := &stubBranchReader{}
-	svc.SetBranchReader(reader)
+	svc := NewService(ServiceParams{
+		Repo:         nil,
+		AgentRepo:    nil,
+		Log:          log,
+		TokenRevoker: nil,
+		BranchReader: reader,
+	})
 	assert.Equal(t, reader, svc.branchReader)
 }

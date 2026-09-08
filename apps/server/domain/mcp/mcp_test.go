@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -719,7 +720,7 @@ func TestIntPtrReturnsUniquePointers(t *testing.T) {
 func TestExecuteToolUnknownTool(t *testing.T) {
 	svc := &Service{}
 
-	_, err := svc.ExecuteTool(nil, "some-project-id", "nonexistent_tool", nil)
+	_, err := svc.ExecuteTool(context.TODO(), "some-project-id", "nonexistent_tool", nil)
 
 	if err == nil {
 		t.Error("ExecuteTool should return error for unknown tool")
@@ -742,7 +743,7 @@ func TestExecuteToolRouting(t *testing.T) {
 
 	for _, toolName := range unknownTools {
 		t.Run(toolName+" returns tool not found", func(t *testing.T) {
-			_, err := svc.ExecuteTool(nil, "", toolName, nil)
+			_, err := svc.ExecuteTool(context.TODO(), "", toolName, nil)
 
 			if err == nil {
 				t.Errorf("ExecuteTool(%q) should return error", toolName)

@@ -19,40 +19,26 @@ type MCPToolHandler struct {
 	executor *AgentExecutor
 	// extractionJobs resolves ObjectExtractionJob records for remember-status so
 	// it can follow queue-reextraction tool calls to the async extraction jobs
-	// that actually perform the graph mutations. Optional — injected via
-	// SetExtractionJobFinder to avoid an import cycle (agents → extraction →
-	// projects → agents). Nil disables job-following.
+	// that actually perform the graph mutations. Optional (interface defined in
+	// mcp to avoid an import cycle agents → extraction → projects → agents).
+	// Nil disables job-following.
 	extractionJobs mcp.ExtractionJobFinder
 	// embeddingJobs resolves graph-embedding job status for the objects a
 	// remember run created, so remember-status can report embedding readiness
-	// (recall/search searchability). Optional — injected via
-	// SetEmbeddingJobFinder. Nil disables embedding tracking.
+	// (recall/search searchability). Optional; nil disables embedding tracking.
 	embeddingJobs mcp.EmbeddingJobFinder
 	log           *slog.Logger
 }
 
 // NewMCPToolHandler creates a new MCPToolHandler.
-func NewMCPToolHandler(repo *Repository, executor *AgentExecutor, log *slog.Logger) *MCPToolHandler {
+func NewMCPToolHandler(repo *Repository, executor *AgentExecutor, log *slog.Logger, extractionJobs mcp.ExtractionJobFinder, embeddingJobs mcp.EmbeddingJobFinder) *MCPToolHandler {
 	return &MCPToolHandler{
-		repo:     repo,
-		executor: executor,
-		log:      log,
+		repo:           repo,
+		executor:       executor,
+		log:            log,
+		extractionJobs: extractionJobs,
+		embeddingJobs:  embeddingJobs,
 	}
-}
-
-// SetExtractionJobFinder injects the extraction-job lookup used by
-// remember-status. Called from main.go under the Agents feature flag; the
-// extraction package cannot be imported from agents (import cycle), so this
-// uses a setter with an interface defined in the mcp package.
-func (h *MCPToolHandler) SetExtractionJobFinder(finder mcp.ExtractionJobFinder) {
-	h.extractionJobs = finder
-}
-
-// SetEmbeddingJobFinder injects the graph-embedding job lookup used by
-// remember-status. Called from main.go under the Agents feature flag; same
-// import-cycle rationale as SetExtractionJobFinder.
-func (h *MCPToolHandler) SetEmbeddingJobFinder(finder mcp.EmbeddingJobFinder) {
-	h.embeddingJobs = finder
 }
 
 // wrapResult marshals data as indented JSON into an MCP ToolResult.

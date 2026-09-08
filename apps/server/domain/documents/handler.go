@@ -81,10 +81,7 @@ func NewHandler(
 // @Router       /api/documents [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -153,10 +150,7 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/documents/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetByID(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -190,10 +184,7 @@ func (h *Handler) GetByID(c echo.Context) error {
 // @Router       /api/documents [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -281,10 +272,7 @@ func (h *Handler) processNewDocument(ctx context.Context, projectID, documentID 
 // @Router       /api/documents/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) Delete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -317,10 +305,7 @@ func (h *Handler) Delete(c echo.Context) error {
 // @Router       /api/documents [delete]
 // @Security     bearerAuth
 func (h *Handler) BulkDelete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -355,10 +340,7 @@ func (h *Handler) BulkDelete(c echo.Context) error {
 // @Router       /api/documents/source-types [get]
 // @Security     bearerAuth
 func (h *Handler) GetSourceTypes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("project ID is required")
@@ -416,10 +398,7 @@ func parsePositiveInt(s string, min, max int) (int, error) {
 // @Router       /api/documents/{id}/content [get]
 // @Security     bearerAuth
 func (h *Handler) GetContent(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -463,10 +442,7 @@ func (h *Handler) GetContent(c echo.Context) error {
 // @Router       /api/documents/{id}/deletion-impact [get]
 // @Security     bearerAuth
 func (h *Handler) GetDeletionImpact(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -499,10 +475,7 @@ func (h *Handler) GetDeletionImpact(c echo.Context) error {
 // @Router       /api/documents/deletion-impact [post]
 // @Security     bearerAuth
 func (h *Handler) BulkDeletionImpact(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -541,10 +514,7 @@ func (h *Handler) BulkDeletionImpact(c echo.Context) error {
 // @Router       /api/documents/{id}/download [get]
 // @Security     bearerAuth
 func (h *Handler) Download(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -606,10 +576,7 @@ func (h *Handler) Download(c echo.Context) error {
 // @Router       /api/documents/{id}/extraction-summary [get]
 // @Security     bearerAuth
 func (h *Handler) GetExtractionSummary(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -643,10 +610,7 @@ func (h *Handler) GetExtractionSummary(c echo.Context) error {
 // @Router       /api/documents/{id}/retry-extraction [post]
 // @Security     bearerAuth
 func (h *Handler) RetryExtraction(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")

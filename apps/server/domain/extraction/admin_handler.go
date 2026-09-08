@@ -24,10 +24,7 @@ func NewAdminHandler(jobsService *ObjectExtractionJobsService) *AdminHandler {
 // CreateJob handles POST /api/admin/extraction-jobs
 // Creates a new extraction job
 func (h *AdminHandler) CreateJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var dto CreateExtractionJobDTO
 	if err := c.Bind(&dto); err != nil {
@@ -105,10 +102,7 @@ func (h *AdminHandler) CreateJob(c echo.Context) error {
 // ListJobs handles GET /api/admin/extraction-jobs/projects/:projectId
 // Lists extraction jobs for a project with pagination
 func (h *AdminHandler) ListJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -177,10 +171,7 @@ func (h *AdminHandler) ListJobs(c echo.Context) error {
 // GetJob handles GET /api/admin/extraction-jobs/:jobId
 // Gets a single extraction job by ID
 func (h *AdminHandler) GetJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {
@@ -206,10 +197,7 @@ func (h *AdminHandler) GetJob(c echo.Context) error {
 // UpdateJob handles PATCH /api/admin/extraction-jobs/:jobId
 // Updates an extraction job
 func (h *AdminHandler) UpdateJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {
@@ -285,10 +273,7 @@ func (h *AdminHandler) UpdateJob(c echo.Context) error {
 // DeleteJob handles DELETE /api/admin/extraction-jobs/:jobId
 // Deletes an extraction job
 func (h *AdminHandler) DeleteJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {
@@ -320,10 +305,7 @@ func (h *AdminHandler) DeleteJob(c echo.Context) error {
 // CancelJob handles POST /api/admin/extraction-jobs/:jobId/cancel
 // Cancels a pending or running extraction job
 func (h *AdminHandler) CancelJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {
@@ -356,10 +338,7 @@ func (h *AdminHandler) CancelJob(c echo.Context) error {
 // RetryJob handles POST /api/admin/extraction-jobs/:jobId/retry
 // Retries a failed or stuck extraction job
 func (h *AdminHandler) RetryJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {
@@ -392,10 +371,7 @@ func (h *AdminHandler) RetryJob(c echo.Context) error {
 // GetStatistics handles GET /api/admin/extraction-jobs/projects/:projectId/statistics
 // Gets job statistics for a project
 func (h *AdminHandler) GetStatistics(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -447,10 +423,7 @@ func (h *AdminHandler) GetStatistics(c echo.Context) error {
 // BulkCancelJobs handles POST /api/admin/extraction-jobs/projects/:projectId/bulk-cancel
 // Cancels all pending/running jobs for a project
 func (h *AdminHandler) BulkCancelJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -476,10 +449,7 @@ func (h *AdminHandler) BulkCancelJobs(c echo.Context) error {
 // BulkDeleteJobs handles DELETE /api/admin/extraction-jobs/projects/:projectId/bulk-delete
 // Deletes all completed/failed/cancelled jobs for a project
 func (h *AdminHandler) BulkDeleteJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -505,10 +475,7 @@ func (h *AdminHandler) BulkDeleteJobs(c echo.Context) error {
 // BulkRetryJobs handles POST /api/admin/extraction-jobs/projects/:projectId/bulk-retry
 // Retries all failed jobs for a project
 func (h *AdminHandler) BulkRetryJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -534,10 +501,7 @@ func (h *AdminHandler) BulkRetryJobs(c echo.Context) error {
 // GetLogs handles GET /api/admin/extraction-jobs/:jobId/logs
 // Gets detailed extraction logs for a job
 func (h *AdminHandler) GetLogs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	jobID := c.Param("jobId")
 	if jobID == "" {

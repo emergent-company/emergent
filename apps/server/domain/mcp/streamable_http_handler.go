@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
@@ -110,10 +109,7 @@ func (h *StreamableHTTPHandler) HandleUnifiedEndpoint(c echo.Context) error {
 
 // handlePOST handles POST requests (send messages to server)
 func (h *StreamableHTTPHandler) handlePOST(c echo.Context, protocolVersion string) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Check Accept header
 	acceptHeader := c.Request().Header.Get("Accept")
@@ -197,10 +193,6 @@ func (h *StreamableHTTPHandler) handlePOST(c echo.Context, protocolVersion strin
 
 // handleGET handles GET requests (open SSE stream for server-initiated messages)
 func (h *StreamableHTTPHandler) handleGET(c echo.Context, protocolVersion string) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	// Check Accept header
 	acceptHeader := c.Request().Header.Get("Accept")

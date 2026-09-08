@@ -95,6 +95,9 @@ type ObjectSchema struct {
 	Properties           map[string]PropertyDef `json:"properties,omitempty"`
 	Required             []string               `json:"required,omitempty"`
 	ExtractionGuidelines string                 `json:"extraction_guidelines,omitempty"`
+	// Version is the schema pack's version string (e.g. "1.0.0"). Populated by
+	// the schema provider so object creation can stamp graph_objects.schema_version.
+	Version string `json:"version,omitempty"`
 }
 
 // PropertyDef defines a property in a schema.

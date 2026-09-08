@@ -678,13 +678,13 @@ func (s *ForgetAgentTestSuite) TestForget_ConfirmStrategy_PausesRun() {
 		// Run status is inside data, not the envelope status field.
 		data, _ := runBody["data"].(map[string]any)
 		status, _ := data["status"].(string)
-		if status == "paused" || status == "input-required" || status == "error" || status == "success" {
+		if status == "input-required" || status == "completed" || status == "failed" {
 			finalStatus = status
 			break
 		}
 	}
 
 	s.T().Logf("run %s final status: %s", runID, finalStatus)
-	s.True(finalStatus == "paused" || finalStatus == "input-required",
+	s.True(finalStatus == "input-required",
 		"expected run to pause for confirmation; got status=%q", finalStatus)
 }

@@ -31,13 +31,18 @@ type modelFactoryParams struct {
 	Resolver      CredentialResolver `optional:"true"`
 	Wrapper       ModelWrapper       `optional:"true"`
 	ModelResolver ModelResolver      `optional:"true"`
+	TestLLM       TestLLMChecker     `optional:"true"`
 }
 
 // provideModelFactory creates a ModelFactory from the main config, with an
 // optional CredentialResolver, ModelWrapper, and ModelResolver injected by
 // domain/provider.Module and domain/modelconfig.Module.
 func provideModelFactory(p modelFactoryParams) *ModelFactory {
-	return NewModelFactory(&p.Cfg.LLM, p.Log, p.Resolver, p.Wrapper, p.ModelResolver)
+	f := NewModelFactory(&p.Cfg.LLM, p.Log, p.Resolver, p.Wrapper, p.ModelResolver)
+	if p.TestLLM != nil {
+		f.WithTestLLMChecker(p.TestLLM)
+	}
+	return f
 }
 
 // ModelFactory creates ADK-compatible LLM models from configuration.
@@ -47,6 +52,7 @@ type ModelFactory struct {
 	resolver      CredentialResolver // optional; nil → env-var-only mode
 	wrapper       ModelWrapper       // optional; nil → no usage tracking
 	modelResolver ModelResolver      // optional; nil → env default only
+	testLLM       TestLLMChecker     // optional; nil → no test-LLM mode
 }
 
 // NewModelFactory creates a new ModelFactory with the given configuration.
@@ -63,6 +69,29 @@ func NewModelFactory(cfg *config.LLMConfig, log *slog.Logger, resolver Credentia
 	}
 }
 
+// WithTestLLMChecker sets the optional test-LLM flag checker. When set and the
+// project has test-LLM mode enabled, CreateModel/CreateModelWithName return a
+// canned model instead of a real provider-backed model.
+func (f *ModelFactory) WithTestLLMChecker(c TestLLMChecker) {
+	f.testLLM = c
+}
+
+// maybeTestLLM returns a deterministic test model when the project in ctx has
+// test-LLM mode enabled, or nil otherwise.
+func (f *ModelFactory) maybeTestLLM(ctx context.Context) model.LLM {
+	if f == nil || f.testLLM == nil {
+		return nil
+	}
+	pid := ProjectIDFromContext(ctx)
+	if pid == "" {
+		return nil
+	}
+	if f.testLLM.IsTestLLM(ctx, pid) {
+		return newTestModel("test-llm")
+	}
+	return nil
+}
+
 // CreateModel creates an ADK-compatible LLM model.
 //
 // Model resolution order:
@@ -76,6 +105,9 @@ func NewModelFactory(cfg *config.LLMConfig, log *slog.Logger, resolver Credentia
 func (f *ModelFactory) CreateModel(ctx context.Context) (model.LLM, error) {
 	if f == nil {
 		return nil, fmt.Errorf("ModelFactory is nil — no LLM provider configured")
+	}
+	if llm := f.maybeTestLLM(ctx); llm != nil {
+		return llm, nil
 	}
 	if f.modelResolver != nil {
 		projectID := ProjectIDFromContext(ctx)
@@ -142,6 +174,9 @@ func (f *ModelFactory) CreateModel(ctx context.Context) (model.LLM, error) {
 //
 // If a ModelWrapper is configured the returned LLM is wrapped for usage tracking.
 func (f *ModelFactory) CreateModelWithName(ctx context.Context, modelName string) (model.LLM, error) {
+	if llm := f.maybeTestLLM(ctx); llm != nil {
+		return llm, nil
+	}
 	if modelName == "" {
 		return nil, fmt.Errorf("model name is required")
 	}

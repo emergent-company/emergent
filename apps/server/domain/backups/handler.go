@@ -1,6 +1,9 @@
 package backups
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,9 +30,11 @@ func NewHandler(service *Service, storage *storage.Service, log *slog.Logger) *H
 	}
 }
 
+// CreateBackupRequestDTO is the request body for creating a backup.
 type CreateBackupRequestDTO struct {
 	IncludeDeleted bool `json:"includeDeleted"`
 	IncludeChat    bool `json:"includeChat"`
+	IncludeJournal bool `json:"includeJournal"`
 	RetentionDays  int  `json:"retentionDays"`
 }
 
@@ -48,10 +53,6 @@ type CreateBackupRequestDTO struct {
 // @Router       /api/v1/organizations/{orgId}/backups [get]
 // @Security     bearerAuth
 func (h *Handler) ListBackups(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 
@@ -96,7 +97,7 @@ func (h *Handler) ListBackups(c echo.Context) error {
 // @Accept       json
 // @Produce      json
 // @Param        projectId path string true "Project ID (UUID)"
-// @Param        request body CreateBackupRequestDTO true "Backup configuration (includeDeleted, includeChat, retentionDays: 1-365)"
+// @Param        request body CreateBackupRequestDTO true "Backup configuration (includeDeleted, includeChat, includeJournal, retentionDays: 1-365)"
 // @Success      202 {object} Backup "Backup creation initiated (status: creating)"
 // @Failure      400 {object} apperror.Error "Invalid request or retention days out of range"
 // @Failure      401 {object} apperror.Error "Unauthorized"
@@ -104,10 +105,7 @@ func (h *Handler) ListBackups(c echo.Context) error {
 // @Router       /api/v1/projects/{projectId}/backups [post]
 // @Security     bearerAuth
 func (h *Handler) CreateBackup(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 
@@ -144,6 +142,7 @@ func (h *Handler) CreateBackup(c echo.Context) error {
 		CreatedBy:      user.ID,
 		IncludeDeleted: req.IncludeDeleted,
 		IncludeChat:    req.IncludeChat,
+		IncludeJournal: req.IncludeJournal,
 		RetentionDays:  req.RetentionDays,
 	})
 	if err != nil {
@@ -170,10 +169,6 @@ func (h *Handler) CreateBackup(c echo.Context) error {
 // @Router       /api/v1/organizations/{orgId}/backups/{backupId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetBackup(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 	backupID := c.Param("backupId")
@@ -205,10 +200,6 @@ func (h *Handler) GetBackup(c echo.Context) error {
 // @Router       /api/v1/organizations/{orgId}/backups/{backupId}/download [get]
 // @Security     bearerAuth
 func (h *Handler) DownloadBackup(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 	backupID := c.Param("backupId")
@@ -258,10 +249,6 @@ func (h *Handler) DownloadBackup(c echo.Context) error {
 // @Router       /api/v1/organizations/{orgId}/backups/{backupId} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteBackup(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	orgID := c.Param("orgId")
 	backupID := c.Param("backupId")
@@ -277,35 +264,202 @@ func (h *Handler) DeleteBackup(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// RestoreBackup initiates a backup restore (not yet implemented)
+// RestoreRequestDTO is the request body for creating a restore job.
+type RestoreRequestDTO struct {
+	BackupID           string `json:"backupId"`
+	Mode               string `json:"mode"`
+	PreRestoreSnapshot *bool  `json:"preRestoreSnapshot"`
+	IncludeJournal     bool   `json:"includeJournal"`
+	TargetProjectName  string `json:"targetProjectName"`
+}
+
+// RestoreBackup initiates an async restore. The route determines the mode:
+// POST /projects/:projectId/restore is an overwrite; POST
+// /organizations/:orgId/restore is a clone into that org.
 // @Summary      Restore project from backup
-// @Description  Initiates async restore of a project from backup archive (coming in next phase)
+// @Description  Initiates async restore of a project from a backup archive. The project route overwrites the existing project; the organization route clones into a new project.
 // @Tags         backups
+// @Accept       json
 // @Produce      json
-// @Param        projectId path string true "Project ID (UUID)"
-// @Success      501 {object} map[string]interface{} "Not implemented - coming in next phase"
+// @Param        request body RestoreRequestDTO true "Restore request (backupId, preRestoreSnapshot, includeJournal, targetProjectName)"
+// @Success      202 {object} Restore "Restore job created (status: pending)"
+// @Failure      400 {object} apperror.Error "Invalid request"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      403 {object} apperror.Error "Not a member of the target organization"
+// @Failure      404 {object} apperror.Error "Backup not found"
+// @Failure      500 {object} apperror.Error "Internal server error"
 // @Router       /api/v1/projects/{projectId}/restore [post]
 // @Security     bearerAuth
 func (h *Handler) RestoreBackup(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, map[string]any{
-		"message": "restore functionality coming in next phase",
-	})
+	user := auth.MustGetUser(c)
+
+	var dto RestoreRequestDTO
+	if err := c.Bind(&dto); err != nil {
+		return apperror.NewBadRequest("invalid request body")
+	}
+	if dto.BackupID == "" {
+		return apperror.NewBadRequest("backupId is required")
+	}
+	preSnapshot := true
+	if dto.PreRestoreSnapshot != nil {
+		preSnapshot = *dto.PreRestoreSnapshot
+	}
+
+	ctx := c.Request().Context()
+
+	if projectID := c.Param("projectId"); projectID != "" {
+		return h.restoreOverwrite(c, ctx, user, projectID, dto, preSnapshot)
+	}
+	orgID := c.Param("orgId")
+	if orgID == "" {
+		return apperror.NewBadRequest("restore requires a projectId or orgId route")
+	}
+	return h.restoreClone(c, ctx, user, orgID, dto)
 }
 
-// GetRestoreStatus retrieves restore job status (not yet implemented)
+// restoreOverwrite handles POST /projects/:projectId/restore.
+func (h *Handler) restoreOverwrite(c echo.Context, ctx context.Context, user *auth.AuthUser, projectID string, dto RestoreRequestDTO, preSnapshot bool) error {
+	var orgID string
+	if err := h.service.repo.db.NewSelect().
+		Table("kb.projects").
+		Column("organization_id").
+		Where("id = ?", projectID).
+		Scan(ctx, &orgID); err != nil {
+		h.log.Error("failed to get project org",
+			slog.String("project_id", projectID),
+			slog.Any("error", err),
+		)
+		return apperror.NewNotFound("project", projectID)
+	}
+
+	backup, err := h.service.GetBackup(ctx, orgID, dto.BackupID)
+	if err != nil {
+		return apperror.NewInternal("failed to get backup", err)
+	}
+	if backup == nil {
+		return apperror.NewNotFound("backup", dto.BackupID)
+	}
+	if backup.Status != BackupStatusReady {
+		return apperror.NewBadRequest("backup is not ready for restore")
+	}
+	if backup.ProjectID != projectID {
+		return apperror.NewBadRequest("backup does not belong to this project")
+	}
+
+	job, err := h.service.CreateRestore(ctx, RestoreRequest{
+		BackupID:           dto.BackupID,
+		Mode:               RestoreModeOverwrite,
+		OrganizationID:     orgID,
+		SourceProjectID:    projectID,
+		TargetProjectID:    projectID,
+		CreatedBy:          user.ID,
+		PreRestoreSnapshot: preSnapshot,
+		IncludeJournal:     dto.IncludeJournal,
+		TargetOrgID:        orgID,
+	})
+	if err != nil {
+		h.log.Error("failed to create restore",
+			slog.String("backup_id", dto.BackupID),
+			slog.Any("error", err),
+		)
+		return apperror.NewInternal("failed to create restore", err)
+	}
+
+	return c.JSON(http.StatusAccepted, job)
+}
+
+// restoreClone handles POST /organizations/:orgId/restore. The path org is the
+// clone destination (supports cross-org restore).
+func (h *Handler) restoreClone(c echo.Context, ctx context.Context, user *auth.AuthUser, orgID string, dto RestoreRequestDTO) error {
+	// The restorer must be a member of the destination org.
+	var memberCount int64
+	if err := h.service.repo.db.NewSelect().
+		Table("kb.organization_memberships").
+		ColumnExpr("count(*)").
+		Where("organization_id = ?", orgID).
+		Where("user_id = ?", user.ID).
+		Scan(ctx, &memberCount); err != nil {
+		return apperror.NewInternal("failed to verify org membership", err)
+	}
+	if memberCount == 0 {
+		return apperror.NewForbidden("you are not a member of the target organization")
+	}
+
+	backup, err := h.fetchBackupByID(ctx, dto.BackupID)
+	if err != nil {
+		return apperror.NewInternal("failed to get backup", err)
+	}
+	if backup == nil {
+		return apperror.NewNotFound("backup", dto.BackupID)
+	}
+	if backup.Status != BackupStatusReady {
+		return apperror.NewBadRequest("backup is not ready for restore")
+	}
+
+	job, err := h.service.CreateRestore(ctx, RestoreRequest{
+		BackupID:          dto.BackupID,
+		Mode:              RestoreModeClone,
+		OrganizationID:    orgID,
+		SourceProjectID:   backup.ProjectID,
+		CreatedBy:         user.ID,
+		IncludeJournal:    dto.IncludeJournal,
+		TargetProjectName: dto.TargetProjectName,
+		TargetOrgID:       orgID,
+	})
+	if err != nil {
+		h.log.Error("failed to create restore",
+			slog.String("backup_id", dto.BackupID),
+			slog.Any("error", err),
+		)
+		return apperror.NewInternal("failed to create restore", err)
+	}
+
+	return c.JSON(http.StatusAccepted, job)
+}
+
+// fetchBackupByID loads a backup regardless of its org (needed for cross-org clone).
+func (h *Handler) fetchBackupByID(ctx context.Context, backupID string) (*Backup, error) {
+	var backup Backup
+	err := h.service.repo.db.NewSelect().
+		Model(&backup).
+		Where("id = ?", backupID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &backup, nil
+}
+
+// GetRestoreStatus retrieves restore job status.
 // @Summary      Get restore job status
-// @Description  Returns restore job progress and status (coming in next phase)
+// @Description  Returns restore job status, progress, and error message (if failed)
 // @Tags         backups
 // @Produce      json
-// @Param        projectId path string true "Project ID (UUID)"
 // @Param        restoreId path string true "Restore job ID (UUID)"
-// @Success      501 {object} map[string]interface{} "Not implemented - coming in next phase"
-// @Router       /api/v1/projects/{projectId}/restores/{restoreId} [get]
+// @Success      200 {object} Restore "Restore job status"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      404 {object} apperror.Error "Restore job not found"
+// @Router       /api/v1/restores/{restoreId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetRestoreStatus(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, map[string]any{
-		"message": "restore functionality coming in next phase",
-	})
+
+	restoreID := c.Param("restoreId")
+	job, err := h.service.GetRestore(c.Request().Context(), restoreID)
+	if err != nil {
+		h.log.Error("failed to get restore",
+			slog.String("restore_id", restoreID),
+			slog.Any("error", err),
+		)
+		return apperror.NewInternal("failed to get restore", err)
+	}
+	if job == nil {
+		return apperror.NewNotFound("restore", restoreID)
+	}
+
+	return c.JSON(http.StatusOK, job)
 }
 
 // ListDatabaseBackups lists all database-level backups (superadmin only)
@@ -319,10 +473,6 @@ func (h *Handler) GetRestoreStatus(c echo.Context) error {
 // @Router       /api/superadmin/database-backups [get]
 // @Security     bearerAuth
 func (h *Handler) ListDatabaseBackups(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	backups, err := h.service.ListDatabaseBackups(c.Request().Context())
 	if err != nil {
@@ -346,10 +496,6 @@ func (h *Handler) ListDatabaseBackups(c echo.Context) error {
 // @Router       /api/superadmin/database-backups/{id}/download [get]
 // @Security     bearerAuth
 func (h *Handler) DownloadDatabaseBackup(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	url, err := h.service.GetDatabaseBackupDownloadURL(c.Request().Context(), id)

@@ -24,11 +24,14 @@ type Service struct {
 	mu                sync.Mutex
 	builtinRegistered map[string]bool
 
-	// ToolPool invalidation callback (set via SetToolPoolInvalidator to break circular import)
+	// ToolPool invalidation callback (registered via RegisterToolPoolInvalidator
+	// to break the mcpregistry ↔ agents circular dependency)
 	toolPoolInvalidator ToolPoolInvalidator
 }
 
 // NewService creates a new MCP registry service.
+// The ToolPool invalidator is wired post-construction via RegisterToolPoolInvalidator
+// (nil-safe) to break the mcpregistry ↔ agents circular dependency.
 func NewService(repo *Repository, mcpService *mcp.Service, registryClient *RegistryClient, log *slog.Logger) *Service {
 	return &Service{
 		repo:              repo,
@@ -40,11 +43,10 @@ func NewService(repo *Repository, mcpService *mcp.Service, registryClient *Regis
 	}
 }
 
-// SetToolPoolInvalidator sets the callback used to invalidate the ToolPool cache
-// when MCP server configurations change. Called after construction via fx.Invoke
-// to break the circular dependency (mcpregistry cannot import agents).
-func (s *Service) SetToolPoolInvalidator(inv ToolPoolInvalidator) {
-	s.toolPoolInvalidator = inv
+// RegisterToolPoolInvalidator wires the ToolPool invalidation callback after
+// construction. Deferred to fx.Invoke to break the mcpregistry ↔ agents constructor cycle.
+func (s *Service) RegisterToolPoolInvalidator(invalidator ToolPoolInvalidator) {
+	s.toolPoolInvalidator = invalidator
 }
 
 // invalidateToolPool notifies the ToolPool to rebuild its cache for a project.

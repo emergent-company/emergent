@@ -90,6 +90,14 @@ func RegisterTasks(p TaskParams) error {
 			slog.String("error", err.Error()))
 	}
 
+	// Register stale backup cleanup task
+	staleBackupTask := NewStaleBackupCleanupTask(p.DB, p.Log, p.Cfg.StaleBackupMinutes)
+	if err := addScheduledTask(p.Scheduler, p.Log, "stale_backup_cleanup",
+		p.Cfg.StaleBackupCleanupSchedule, p.Cfg.StaleBackupCleanupInterval, staleBackupTask.Run); err != nil {
+		p.Log.Error("failed to register stale backup cleanup task",
+			slog.String("error", err.Error()))
+	}
+
 	// Register database backup task (daily at 7am by default)
 	dbBackupTask := NewDatabaseBackupTask(p.DB, p.Storage, p.AppCfg, p.Log)
 	if err := addScheduledTask(p.Scheduler, p.Log, "database_backup",

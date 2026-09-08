@@ -85,7 +85,6 @@ func (r *Repository) GetProjectTypes(ctx context.Context, projectID string, quer
 	} else if query.Namespace != "all" {
 		sql += fmt.Sprintf(" AND ptr.namespace = $%d", argIdx)
 		args = append(args, query.Namespace)
-		argIdx++
 	}
 	// "all" → no namespace filter
 

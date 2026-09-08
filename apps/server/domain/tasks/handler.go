@@ -33,11 +33,6 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/tasks/counts [get]
 // @Security     bearerAuth
 func (h *Handler) GetCounts(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	projectID := c.QueryParam("project_id")
 	if projectID == "" {
 		// Try to get from header (X-Project-ID)
@@ -71,10 +66,7 @@ func (h *Handler) GetCounts(c echo.Context) error {
 // @Router       /api/tasks/all/counts [get]
 // @Security     bearerAuth
 func (h *Handler) GetAllCounts(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	counts, err := h.svc.GetAllCounts(c.Request().Context(), user.ID)
 	if err != nil {
@@ -106,11 +98,6 @@ func (h *Handler) GetAllCounts(c echo.Context) error {
 // @Router       /api/tasks [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	projectID := c.QueryParam("project_id")
 	if projectID == "" {
 		projectID = c.Request().Header.Get("X-Project-ID")
@@ -160,10 +147,7 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/tasks/all [get]
 // @Security     bearerAuth
 func (h *Handler) ListAll(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	params := TaskListParams{
 		Status: c.QueryParam("status"),
@@ -205,10 +189,6 @@ func (h *Handler) ListAll(c echo.Context) error {
 // @Router       /api/tasks/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetByID(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	taskID := c.Param("id")
 	if taskID == "" {
@@ -249,10 +229,7 @@ func (h *Handler) GetByID(c echo.Context) error {
 // @Router       /api/tasks/{id}/resolve [post]
 // @Security     bearerAuth
 func (h *Handler) Resolve(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	taskID := c.Param("id")
 	if taskID == "" {
@@ -296,10 +273,7 @@ func (h *Handler) Resolve(c echo.Context) error {
 // @Router       /api/tasks/{id}/cancel [post]
 // @Security     bearerAuth
 func (h *Handler) Cancel(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	taskID := c.Param("id")
 	if taskID == "" {

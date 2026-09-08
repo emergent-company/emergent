@@ -40,10 +40,6 @@ func NewMCPHostingHandler(hosting *MCPHostingService, log *slog.Logger) *MCPHost
 // @Router       /api/v1/mcp/hosted [post]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) RegisterServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	var req RegisterMCPServerRequest
 	if err := c.Bind(&req); err != nil {
@@ -77,10 +73,6 @@ func (h *MCPHostingHandler) RegisterServer(c echo.Context) error {
 // @Router       /api/v1/mcp/hosted/{id}/call [post]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) CallServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -127,10 +119,6 @@ func (h *MCPHostingHandler) CallServer(c echo.Context) error {
 // @Router       /api/v1/mcp/hosted/{id} [get]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) GetServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -158,10 +146,6 @@ func (h *MCPHostingHandler) GetServer(c echo.Context) error {
 // @Router       /api/v1/mcp/hosted [get]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) ListServers(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	statuses, err := h.hosting.ListAll(c.Request().Context())
 	if err != nil {
@@ -183,10 +167,6 @@ func (h *MCPHostingHandler) ListServers(c echo.Context) error {
 // @Router       /api/v1/mcp/hosted/{id} [delete]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) RemoveServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -216,10 +196,6 @@ func (h *MCPHostingHandler) RemoveServer(c echo.Context) error {
 // @Router       /api/v1/mcp/hosted/{id}/restart [post]
 // @Security     bearerAuth
 func (h *MCPHostingHandler) RestartServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {

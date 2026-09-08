@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the --new-from-rev ratchet
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -30,12 +32,17 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
 
-      - name: golangci-lint
+      - name: golangci-lint (new issues only)
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
           working-directory: apps/server
           install-mode: goinstall
+          only-new-issues: true
+
+      - name: Architectural debt ratchet
+        working-directory: apps/server
+        run: ./scripts/lint-ratchet.sh
 
   build:
     name: Build

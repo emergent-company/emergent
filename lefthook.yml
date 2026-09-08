@@ -25,6 +25,11 @@ pre-commit:
     - name: go-build
       run: go build ./apps/server/...
 
+    - name: lint-ratchet
+      glob: "*.go"
+      run: |
+        cd apps/server && ./scripts/lint-ratchet.sh
+
 lint:
   parallel: true
   jobs:

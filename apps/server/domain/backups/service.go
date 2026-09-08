@@ -10,21 +10,23 @@ import (
 	"github.com/google/uuid"
 )
 
-// Service handles backup business logic
+// Service handles backup business logic.
 type Service struct {
-	repo    *Repository
-	creator *Creator
-	storage *storage.Service
-	log     *slog.Logger
+	repo     *Repository
+	creator  *Creator
+	restorer *Restorer
+	storage  *storage.Service
+	log      *slog.Logger
 }
 
 // NewService creates a new backup service
-func NewService(repo *Repository, creator *Creator, storageSvc *storage.Service, log *slog.Logger) *Service {
+func NewService(repo *Repository, creator *Creator, restorer *Restorer, storageSvc *storage.Service, log *slog.Logger) *Service {
 	return &Service{
-		repo:    repo,
-		creator: creator,
-		storage: storageSvc,
-		log:     log.With(slog.String("component", "backups.service")),
+		repo:     repo,
+		creator:  creator,
+		restorer: restorer,
+		storage:  storageSvc,
+		log:      log.With(slog.String("component", "backups.service")),
 	}
 }
 
@@ -66,6 +68,7 @@ func (s *Service) CreateBackup(ctx context.Context, req CreateBackupRequest) (*B
 			"chunks":    true,
 			"graph":     true,
 			"chat":      req.IncludeChat,
+			"journal":   req.IncludeJournal,
 			"deleted":   req.IncludeDeleted,
 		},
 		CreatedAt: time.Now(),
@@ -96,6 +99,7 @@ func (s *Service) executeBackup(ctx context.Context, backupID string, req Create
 		ProjectName:    "", // Will be fetched from database
 		OrganizationID: req.OrganizationID,
 		IncludeChat:    req.IncludeChat,
+		IncludeJournal: req.IncludeJournal,
 		IncludeDeleted: req.IncludeDeleted,
 	}
 
@@ -111,7 +115,7 @@ func (s *Service) executeBackup(ctx context.Context, backupID string, req Create
 			slog.String("backup_id", backupID),
 			slog.Any("error", err),
 		)
-		s.markBackupFailed(ctx, backupID, err)
+		s.markBackupFailed(ctx, req.OrganizationID, backupID, err)
 		return
 	}
 	opts.ProjectName = projectName
@@ -122,7 +126,7 @@ func (s *Service) executeBackup(ctx context.Context, backupID string, req Create
 			slog.String("backup_id", backupID),
 			slog.Any("error", err),
 		)
-		s.markBackupFailed(ctx, backupID, err)
+		s.markBackupFailed(ctx, req.OrganizationID, backupID, err)
 		return
 	}
 
@@ -132,8 +136,8 @@ func (s *Service) executeBackup(ctx context.Context, backupID string, req Create
 }
 
 // markBackupFailed marks a backup as failed
-func (s *Service) markBackupFailed(ctx context.Context, backupID string, err error) {
-	backup, getErr := s.repo.GetByID(ctx, "", backupID)
+func (s *Service) markBackupFailed(ctx context.Context, orgID, backupID string, err error) {
+	backup, getErr := s.repo.GetByID(ctx, orgID, backupID)
 	if getErr != nil {
 		s.log.Error("failed to get backup for failure update",
 			slog.String("backup_id", backupID),
@@ -198,6 +202,65 @@ func (s *Service) UpdateBackupStatus(ctx context.Context, backupID, status strin
 // DeleteBackup soft deletes a backup
 func (s *Service) DeleteBackup(ctx context.Context, orgID, backupID string) error {
 	return s.repo.SoftDelete(ctx, orgID, backupID)
+}
+
+// CreateRestore creates a restore job and dispatches it asynchronously.
+func (s *Service) CreateRestore(ctx context.Context, req RestoreRequest) (*Restore, error) {
+	if req.BackupID == "" {
+		return nil, fmt.Errorf("backup_id is required")
+	}
+	if req.Mode != RestoreModeOverwrite && req.Mode != RestoreModeClone {
+		return nil, fmt.Errorf("invalid restore mode %q", req.Mode)
+	}
+
+	restoreID := uuid.New().String()
+	job := &Restore{
+		ID:             restoreID,
+		OrganizationID: req.OrganizationID,
+		BackupID:       req.BackupID,
+		Mode:           req.Mode,
+		Status:         RestoreStatusPending,
+		Progress:       0,
+		CreatedAt:      time.Now(),
+		Stats:          map[string]any{},
+	}
+	if req.SourceProjectID != "" {
+		job.SourceProjectID = &req.SourceProjectID
+	}
+	if req.TargetProjectID != "" {
+		job.TargetProjectID = &req.TargetProjectID
+	}
+	if req.CreatedBy != "" {
+		job.CreatedBy = &req.CreatedBy
+	}
+
+	if err := s.repo.CreateRestore(ctx, job); err != nil {
+		return nil, err
+	}
+
+	s.log.Info("restore job created",
+		slog.String("restore_id", restoreID),
+		slog.String("backup_id", req.BackupID),
+		slog.String("mode", req.Mode),
+	)
+
+	// Run on its own copy so the caller's snapshot is not mutated concurrently.
+	dispatch := *job
+	go s.restorer.Restore(context.Background(), &dispatch, req)
+
+	return job, nil
+}
+
+// GetRestore retrieves a restore job by ID.
+func (s *Service) GetRestore(ctx context.Context, id string) (*Restore, error) {
+	job, err := s.repo.GetRestore(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get restore: %w", err)
+	}
+	if job == nil {
+		return nil, nil
+	}
+	return job, nil
 }
 
 // GenerateStorageKey generates a MinIO storage key for a backup

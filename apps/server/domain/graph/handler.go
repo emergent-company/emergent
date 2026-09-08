@@ -78,12 +78,6 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 	}
 }
 
-// getProjectID extracts and parses the project ID from the auth user context.
-// Deprecated: Use auth.GetProjectUUID(c) directly.
-func getProjectID(c echo.Context) (uuid.UUID, error) {
-	return auth.GetProjectUUID(c)
-}
-
 // getUserID extracts and parses the user ID from the auth user context.
 func getUserID(c echo.Context) (*uuid.UUID, error) {
 	user := auth.GetUser(c)
@@ -126,12 +120,8 @@ func getUserID(c echo.Context) (*uuid.UUID, error) {
 // @Router       /api/graph/objects/search [get]
 // @Security     bearerAuth
 func (h *Handler) ListObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -297,12 +287,8 @@ func (h *Handler) ListObjects(c echo.Context) error {
 // @Router       /api/graph/objects/count [get]
 // @Security     bearerAuth
 func (h *Handler) CountObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -414,12 +400,7 @@ func (h *Handler) CountObjects(c echo.Context) error {
 // @Router       /api/graph/objects/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -456,12 +437,8 @@ func (h *Handler) GetObject(c echo.Context) error {
 // @Router       /api/graph/objects [post]
 // @Security     bearerAuth
 func (h *Handler) CreateObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -499,12 +476,8 @@ func (h *Handler) CreateObject(c echo.Context) error {
 // @Router       /api/graph/objects/validate [post]
 // @Security     bearerAuth
 func (h *Handler) ValidateObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -541,12 +514,8 @@ func (h *Handler) ValidateObject(c echo.Context) error {
 // @Router       /api/graph/objects/upsert [put]
 // @Security     bearerAuth
 func (h *Handler) UpsertObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -593,12 +562,8 @@ func (h *Handler) UpsertObject(c echo.Context) error {
 // @Router       /api/graph/objects/{id}/move [post]
 // @Security     bearerAuth
 func (h *Handler) MoveObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -638,12 +603,8 @@ func (h *Handler) MoveObject(c echo.Context) error {
 // @Router       /api/graph/objects/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) PatchObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -682,12 +643,8 @@ func (h *Handler) PatchObject(c echo.Context) error {
 // @Router       /api/graph/objects/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -736,12 +693,8 @@ func (h *Handler) DeleteObject(c echo.Context) error {
 // @Router       /api/graph/objects/{id}/restore [post]
 // @Security     bearerAuth
 func (h *Handler) RestoreObject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -774,12 +727,8 @@ func (h *Handler) RestoreObject(c echo.Context) error {
 // @Router       /api/graph/objects/{id}/history [get]
 // @Security     bearerAuth
 func (h *Handler) GetObjectHistory(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -813,12 +762,8 @@ func (h *Handler) GetObjectHistory(c echo.Context) error {
 // @Router       /api/graph/objects/{id}/edges [get]
 // @Security     bearerAuth
 func (h *Handler) GetObjectEdges(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -878,12 +823,8 @@ func (h *Handler) GetObjectEdges(c echo.Context) error {
 // @Security     bearerAuth
 // CountRelationships returns the total count of relationships matching filter parameters.
 func (h *Handler) CountRelationships(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -930,12 +871,8 @@ func (h *Handler) CountRelationships(c echo.Context) error {
 }
 
 func (h *Handler) ListRelationships(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1012,12 +949,8 @@ func (h *Handler) ListRelationships(c echo.Context) error {
 // @Router       /api/graph/relationships/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1052,12 +985,8 @@ func (h *Handler) GetRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships [post]
 // @Security     bearerAuth
 func (h *Handler) CreateRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1104,12 +1033,8 @@ func (h *Handler) CreateRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships/upsert [put]
 // @Security     bearerAuth
 func (h *Handler) UpsertRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1158,12 +1083,8 @@ func (h *Handler) UpsertRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) PatchRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1201,12 +1122,8 @@ func (h *Handler) PatchRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1253,12 +1170,8 @@ func (h *Handler) DeleteRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships/{id}/restore [post]
 // @Security     bearerAuth
 func (h *Handler) RestoreRelationship(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1290,12 +1203,8 @@ func (h *Handler) RestoreRelationship(c echo.Context) error {
 // @Router       /api/graph/relationships/{id}/history [get]
 // @Security     bearerAuth
 func (h *Handler) GetRelationshipHistory(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1336,12 +1245,8 @@ func (h *Handler) GetRelationshipHistory(c echo.Context) error {
 // @Router       /api/graph/objects/fts [get]
 // @Security     bearerAuth
 func (h *Handler) FTSSearch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1411,12 +1316,8 @@ func (h *Handler) FTSSearch(c echo.Context) error {
 // @Router       /api/graph/objects/vector-search [post]
 // @Security     bearerAuth
 func (h *Handler) VectorSearch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1454,12 +1355,9 @@ func (h *Handler) VectorSearch(c echo.Context) error {
 // @Router       /api/graph/search [post]
 // @Security     bearerAuth
 func (h *Handler) HybridSearch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1528,12 +1426,8 @@ func (h *Handler) HybridSearch(c echo.Context) error {
 // @Router       /api/graph/objects/tags [get]
 // @Security     bearerAuth
 func (h *Handler) GetTags(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1575,12 +1469,8 @@ func (h *Handler) GetTags(c echo.Context) error {
 // @Router       /api/graph/objects/bulk-update-status [post]
 // @Security     bearerAuth
 func (h *Handler) BulkUpdateStatus(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1621,12 +1511,8 @@ func (h *Handler) BulkUpdateStatus(c echo.Context) error {
 // @Router       /api/graph/search-with-neighbors [post]
 // @Security     bearerAuth
 func (h *Handler) SearchWithNeighbors(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1673,12 +1559,8 @@ func (h *Handler) SearchWithNeighbors(c echo.Context) error {
 // @Router       /api/graph/objects/{id}/similar [get]
 // @Security     bearerAuth
 func (h *Handler) GetSimilarObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1761,12 +1643,8 @@ func (h *Handler) GetSimilarObjects(c echo.Context) error {
 // @Router       /api/graph/expand [post]
 // @Security     bearerAuth
 func (h *Handler) ExpandGraph(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1810,12 +1688,8 @@ func (h *Handler) ExpandGraph(c echo.Context) error {
 // @Router       /api/graph/traverse [post]
 // @Security     bearerAuth
 func (h *Handler) TraverseGraph(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1860,12 +1734,8 @@ func (h *Handler) TraverseGraph(c echo.Context) error {
 // @Router       /api/graph/branches/{targetBranchId}/merge [post]
 // @Security     bearerAuth
 func (h *Handler) MergeBranch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1912,12 +1782,8 @@ func (h *Handler) MergeBranch(c echo.Context) error {
 // @Success      200 {object} MergeReadinessResponse
 // @Router       /api/graph/branches/{branchId}/merge-readiness [get]
 func (h *Handler) MergeReadiness(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -1952,12 +1818,8 @@ func (h *Handler) MergeReadiness(c echo.Context) error {
 // @Success      200 {object} BranchMergeResponse
 // @Router       /api/graph/branches/{branchId}/compare [get]
 func (h *Handler) CompareBranches(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2007,12 +1869,8 @@ func (h *Handler) CompareBranches(c echo.Context) error {
 // @Router       /api/graph/analytics/most-accessed [get]
 // @Security     bearerAuth
 func (h *Handler) GetMostAccessed(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2053,12 +1911,8 @@ func (h *Handler) GetMostAccessed(c echo.Context) error {
 // @Router       /api/graph/analytics/unused [get]
 // @Security     bearerAuth
 func (h *Handler) GetUnused(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2103,12 +1957,8 @@ func (h *Handler) GetUnused(c echo.Context) error {
 // @Router       /api/graph/objects/bulk [post]
 // @Security     bearerAuth
 func (h *Handler) BulkCreateObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2148,12 +1998,8 @@ func (h *Handler) BulkCreateObjects(c echo.Context) error {
 // @Router       /api/graph/objects/bulk-update [post]
 // @Security     bearerAuth
 func (h *Handler) BulkUpdateObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2193,12 +2039,8 @@ func (h *Handler) BulkUpdateObjects(c echo.Context) error {
 // @Router       /api/graph/relationships/bulk [post]
 // @Security     bearerAuth
 func (h *Handler) BulkCreateRelationships(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2237,12 +2079,8 @@ func (h *Handler) BulkCreateRelationships(c echo.Context) error {
 // @Router       /api/graph/subgraph [post]
 // @Security     bearerAuth
 func (h *Handler) CreateSubgraph(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2288,12 +2126,8 @@ func (h *Handler) CreateSubgraph(c echo.Context) error {
 // @Router       /api/graph/branches/{id}/fork [post]
 // @Security     bearerAuth
 func (h *Handler) ForkBranch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2344,12 +2178,8 @@ func (h *Handler) ForkBranch(c echo.Context) error {
 // @Router       /api/graph/objects/bulk-action [post]
 // @Security     bearerAuth
 func (h *Handler) BulkAction(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}
@@ -2384,12 +2214,8 @@ func (h *Handler) BulkAction(c echo.Context) error {
 // @Success      200 {object} ReindexEmbeddingsResponse
 // @Router       /api/graph/reindex-embeddings [post]
 func (h *Handler) ReindexEmbeddings(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return apperror.ErrBadRequest.WithMessage("invalid project_id")
 	}

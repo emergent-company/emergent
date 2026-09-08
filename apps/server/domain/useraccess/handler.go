@@ -9,6 +9,9 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
+// Keep apperror imported for swagger type resolution (@Failure {object} apperror.Error).
+var _ = apperror.Error{}
+
 // Handler handles HTTP requests for user access
 type Handler struct {
 	svc *Service
@@ -31,10 +34,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /user/orgs-and-projects [get]
 // @Security     bearerAuth
 func (h *Handler) GetOrgsAndProjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	tree, err := h.svc.GetAccessTree(c.Request().Context(), user.ID)
 	if err != nil {

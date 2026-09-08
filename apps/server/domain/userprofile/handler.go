@@ -32,10 +32,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/user/profile [get]
 // @Security     bearerAuth
 func (h *Handler) Get(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	profile, err := h.svc.GetByID(c.Request().Context(), user.ID)
 	if err != nil {
@@ -59,10 +56,7 @@ func (h *Handler) Get(c echo.Context) error {
 // @Router       /api/user/profile [put]
 // @Security     bearerAuth
 func (h *Handler) Update(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req UpdateProfileRequest
 	if err := c.Bind(&req); err != nil {

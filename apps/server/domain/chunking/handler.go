@@ -37,10 +37,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/documents/{id}/recreate-chunks [post]
 // @Security     bearerAuth
 func (h *Handler) RecreateChunks(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")

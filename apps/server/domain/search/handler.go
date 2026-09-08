@@ -37,10 +37,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router /search/unified [post]
 func (h *Handler) Search(c echo.Context) error {
 	// Get authenticated user
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Get project ID
 	projectIDStr, err := auth.GetProjectID(c)

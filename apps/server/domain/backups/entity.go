@@ -48,7 +48,7 @@ type Backup struct {
 	ChangeWindow     map[string]any `bun:"change_window,type:jsonb" json:"changeWindow,omitempty"`
 }
 
-// BackupStatus constants
+// BackupStatus constants.
 const (
 	BackupStatusCreating = "creating"
 	BackupStatusReady    = "ready"
@@ -61,6 +61,53 @@ const (
 	BackupTypeFull        = "full"
 	BackupTypeIncremental = "incremental"
 )
+
+// Restore represents a restore job in the kb.restores table.
+type Restore struct {
+	bun.BaseModel `bun:"table:kb.restores,alias:r"`
+
+	ID              string         `bun:"id,pk,type:uuid,default:gen_random_uuid()" json:"id"`
+	OrganizationID  string         `bun:"organization_id,notnull,type:uuid" json:"organizationId"`
+	BackupID        string         `bun:"backup_id,notnull,type:uuid" json:"backupId"`
+	Mode            string         `bun:"mode,notnull" json:"mode"` // overwrite | clone
+	SourceProjectID *string        `bun:"source_project_id,type:uuid" json:"sourceProjectId,omitempty"`
+	TargetProjectID *string        `bun:"target_project_id,type:uuid" json:"targetProjectId,omitempty"`
+	Status          string         `bun:"status,notnull,default:'pending'" json:"status"` // pending|running|completed|failed
+	Progress        int            `bun:"progress,notnull,default:0" json:"progress"`
+	ErrorMessage    *string        `bun:"error_message" json:"errorMessage,omitempty"`
+	Stats           map[string]any `bun:"stats,type:jsonb" json:"stats,omitempty"`
+	CreatedAt       time.Time      `bun:"created_at,notnull,default:now()" json:"createdAt"`
+	CreatedBy       *string        `bun:"created_by,type:uuid" json:"createdBy,omitempty"`
+	CompletedAt     *time.Time     `bun:"completed_at" json:"completedAt,omitempty"`
+}
+
+// Restore status constants.
+const (
+	RestoreStatusPending   = "pending"
+	RestoreStatusRunning   = "running"
+	RestoreStatusCompleted = "completed"
+	RestoreStatusFailed    = "failed"
+)
+
+// Restore mode constants.
+const (
+	RestoreModeOverwrite = "overwrite"
+	RestoreModeClone     = "clone"
+)
+
+// RestoreRequest contains parameters for creating a restore job.
+type RestoreRequest struct {
+	BackupID           string
+	Mode               string
+	OrganizationID     string // owning org of the job (project org for overwrite, target org for clone)
+	SourceProjectID    string
+	TargetProjectID    string // preset for overwrite; generated during clone
+	CreatedBy          string
+	PreRestoreSnapshot bool
+	IncludeJournal     bool
+	TargetProjectName  string
+	TargetOrgID        string // clone destination org (may differ from the backup's org)
+}
 
 // ListParams contains parameters for listing backups
 type ListParams struct {
@@ -91,6 +138,7 @@ type CreateBackupRequest struct {
 	CreatedBy      string
 	IncludeDeleted bool
 	IncludeChat    bool
+	IncludeJournal bool
 	RetentionDays  int // Default: 30
 }
 
@@ -110,14 +158,23 @@ type BackupStats struct {
 
 // Manifest represents the manifest.json file inside a backup ZIP
 type Manifest struct {
-	Version       string         `json:"version"`
-	SchemaVersion string         `json:"schemaVersion"`
-	CreatedAt     time.Time      `json:"createdAt"`
-	BackupType    string         `json:"backupType"`
-	Project       ProjectInfo    `json:"project"`
-	Contents      BackupStats    `json:"contents"`
-	Checksums     Checksums      `json:"checksums"`
-	Metadata      map[string]any `json:"metadata"`
+	Version       string               `json:"version"`
+	SchemaVersion string               `json:"schemaVersion"`
+	CreatedAt     time.Time            `json:"createdAt"`
+	BackupType    string               `json:"backupType"`
+	Project       ProjectInfo          `json:"project"`
+	Contents      BackupStats          `json:"contents"`
+	Files         map[string]FileEntry `json:"files"`
+	Checksums     Checksums            `json:"checksums"`
+	Metadata      map[string]any       `json:"metadata"`
+}
+
+// FileEntry maps an exported file's storage_key to its human-facing metadata.
+// ZIP entries under files/ are keyed by storage_key (path-sanitized), never by
+// filename, so two documents sharing a filename both survive.
+type FileEntry struct {
+	Filename string  `json:"filename"`
+	MimeType *string `json:"mimeType,omitempty"`
 }
 
 // ProjectInfo represents project information in the manifest

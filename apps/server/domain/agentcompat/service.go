@@ -454,16 +454,6 @@ func (s *clientPauseState) allCalls() []ToolCall {
 	return out
 }
 
-// firstCall returns the first pending tool call (for legacy single-tool paths).
-func (s *clientPauseState) firstCall() pendingToolCall {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.calls) == 0 {
-		return pendingToolCall{}
-	}
-	return s.calls[0]
-}
-
 // buildClientTools converts each ClientToolDef into an ADK tool.Tool whose
 // handler records the call in pause and returns a sentinel asking the executor
 // to suspend.  The executor sees the tool return normally — the actual

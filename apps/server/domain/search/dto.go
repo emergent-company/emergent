@@ -94,6 +94,7 @@ type UnifiedSearchGraphResult struct {
 	ObjectType      string                      `json:"object_type"`
 	Key             string                      `json:"key"`
 	Fields          map[string]any              `json:"fields"`
+	Labels          []string                    `json:"labels,omitempty"`
 	LexicalScore    *float32                    `json:"lexical_score,omitempty"`
 	VectorScore     *float32                    `json:"vector_score,omitempty"`
 	Relationships   []UnifiedSearchRelationship `json:"relationships,omitempty"`
@@ -134,6 +135,7 @@ type UnifiedSearchResultItem struct {
 	ObjectType      string                      `json:"object_type,omitempty"`
 	Key             string                      `json:"key,omitempty"`
 	Fields          map[string]any              `json:"fields,omitempty"`
+	Labels          []string                    `json:"labels,omitempty"`
 	Relationships   []UnifiedSearchRelationship `json:"relationships,omitempty"`
 	Explanation     *string                     `json:"explanation,omitempty"`
 	TruncatedFields []string                    `json:"truncated_fields,omitempty"`

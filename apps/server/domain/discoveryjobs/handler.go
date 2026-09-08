@@ -7,7 +7,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
-	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
 // Handler handles HTTP requests for discovery jobs
@@ -35,10 +34,6 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /discovery-jobs/projects/{projectId}/start [post]
 // @Security     bearerAuth
 func (h *Handler) StartDiscovery(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectIDStr := c.Param("projectId")
 	projectID, err := uuid.Parse(projectIDStr)
@@ -78,10 +73,6 @@ func (h *Handler) StartDiscovery(c echo.Context) error {
 // @Router       /discovery-jobs/{jobId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetJobStatus(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	jobIDStr := c.Param("jobId")
 	jobID, err := uuid.Parse(jobIDStr)
@@ -111,10 +102,6 @@ func (h *Handler) GetJobStatus(c echo.Context) error {
 // @Router       /discovery-jobs/projects/{projectId} [get]
 // @Security     bearerAuth
 func (h *Handler) ListJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectIDStr := c.Param("projectId")
 	projectID, err := uuid.Parse(projectIDStr)
@@ -145,10 +132,6 @@ func (h *Handler) ListJobs(c echo.Context) error {
 // @Router       /discovery-jobs/{jobId} [delete]
 // @Security     bearerAuth
 func (h *Handler) CancelJob(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	jobIDStr := c.Param("jobId")
 	jobID, err := uuid.Parse(jobIDStr)
@@ -182,10 +165,6 @@ func (h *Handler) CancelJob(c echo.Context) error {
 // @Router       /discovery-jobs/{jobId}/finalize [post]
 // @Security     bearerAuth
 func (h *Handler) FinalizeDiscovery(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	jobIDStr := c.Param("jobId")
 	jobID, err := uuid.Parse(jobIDStr)

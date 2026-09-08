@@ -29,10 +29,7 @@ func NewHandler(svc *Service) *Handler {
 // @Failure      500 {object} apperror.Error
 // @Router       /api/admin/sandbox-images [get]
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -60,10 +57,6 @@ func (h *Handler) List(c echo.Context) error {
 // @Failure      404 {object} apperror.Error
 // @Router       /api/admin/sandbox-images/{id} [get]
 func (h *Handler) Get(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -94,10 +87,7 @@ func (h *Handler) Get(c echo.Context) error {
 // @Failure      409 {object} apperror.Error
 // @Router       /api/admin/sandbox-images [post]
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -135,10 +125,6 @@ func (h *Handler) Create(c echo.Context) error {
 // @Failure      404 {object} apperror.Error
 // @Router       /api/admin/sandbox-images/{id} [delete]
 func (h *Handler) Delete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {

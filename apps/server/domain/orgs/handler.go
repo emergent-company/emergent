@@ -30,10 +30,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/orgs [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	orgs, err := h.svc.List(c.Request().Context(), user.ID)
 	if err != nil {
@@ -80,10 +77,7 @@ func (h *Handler) Get(c echo.Context) error {
 // @Router       /api/orgs [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req CreateOrgRequest
 	if err := c.Bind(&req); err != nil {

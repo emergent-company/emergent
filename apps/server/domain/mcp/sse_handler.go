@@ -66,10 +66,7 @@ func NewSSEHandler(svc *Service, handler *Handler, log *slog.Logger) *SSEHandler
 
 // HandleSSEConnect handles GET /mcp/sse/:projectId - SSE connection endpoint
 func (h *SSEHandler) HandleSSEConnect(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if _, err := uuid.Parse(projectID); err != nil {
@@ -142,10 +139,7 @@ func (h *SSEHandler) HandleSSEConnect(c echo.Context) error {
 
 // HandleSSEMessage handles POST /mcp/sse/:projectId/message - Send messages to MCP server
 func (h *SSEHandler) HandleSSEMessage(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if _, err := uuid.Parse(projectID); err != nil {

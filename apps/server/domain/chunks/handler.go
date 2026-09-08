@@ -20,12 +20,6 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// getProjectID extracts and parses the project ID from the request context.
-// Deprecated: Use auth.GetProjectUUID(c) directly.
-func getProjectID(c echo.Context) (uuid.UUID, error) {
-	return auth.GetProjectUUID(c)
-}
-
 // List handles GET /chunks
 // @Summary List chunks
 // @Description List all chunks for the project, optionally filtered by document ID
@@ -39,7 +33,7 @@ func getProjectID(c echo.Context) (uuid.UUID, error) {
 // @Failure 403 {object} apperror.Error
 // @Router /chunks [get]
 func (h *Handler) List(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -76,7 +70,7 @@ func (h *Handler) List(c echo.Context) error {
 // @Failure 404 {object} apperror.Error
 // @Router /chunks/{id} [delete]
 func (h *Handler) Delete(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -106,7 +100,7 @@ func (h *Handler) Delete(c echo.Context) error {
 // @Failure 403 {object} apperror.Error
 // @Router /chunks [delete]
 func (h *Handler) BulkDelete(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -141,7 +135,7 @@ func (h *Handler) BulkDelete(c echo.Context) error {
 // @Failure 403 {object} apperror.Error
 // @Router /chunks/by-document/{documentId} [delete]
 func (h *Handler) DeleteByDocument(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -172,7 +166,7 @@ func (h *Handler) DeleteByDocument(c echo.Context) error {
 // @Failure 403 {object} apperror.Error
 // @Router /chunks/by-documents [delete]
 func (h *Handler) BulkDeleteByDocuments(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}

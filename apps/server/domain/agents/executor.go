@@ -962,10 +962,13 @@ func (ae *AgentExecutor) Resume(ctx context.Context, priorRun *AgentRun, req Exe
 	return result, nil
 }
 
-// injectToolResponse appends a FunctionResponse event to the ADK session so that
-// on resume, the LLM sees a proper tool call/response pair instead of a synthetic
-// text message. The session is identified by rootRunID (the original non-resumed run ID).
-// req is a pointer so that callers can inspect any mutations made during injection.
+// injectToolResponse delivers the resumed tool response (human answer, child
+// output, client-tool result, or approved/rejected tool result) to the ADK
+// session so the LLM sees a proper tool call/response pair. It replaces the
+// synthetic sentinel FunctionResponse(s) that the paused run recorded for the
+// same call IDs rather than appending duplicates. The session is identified by
+// rootRunID (the original non-resumed run ID). req is a pointer so callers can
+// inspect any mutations made during injection.
 func (ae *AgentExecutor) injectToolResponse(ctx context.Context, rootRunID, runID, projectID string, sc *SuspendSignal, req *ExecuteRequest) error {
 	sessionID := rootRunID // matches getRootRunID result used in runPipeline
 
@@ -1079,15 +1082,115 @@ func (ae *AgentExecutor) injectToolResponse(ctx context.Context, rootRunID, runI
 		Content: content,
 	}
 
-	if appendErr := ae.sessionService.AppendEvent(ctx, getResp.Session, event); appendErr != nil {
-		return fmt.Errorf("failed to append FunctionResponse event: %w", appendErr)
+	// The paused run already recorded synthetic sentinel FunctionResponses for
+	// these call IDs (e.g. "awaiting_confirmation"). Appending a second response
+	// for the same ID leaves two responses for one call and confuses the model.
+	// Rebuild the session instead: replace the sentinel(s) with the real
+	// response(s) and drop the trailing pause-announcement that follows them.
+	toolCallIDs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != nil && p.FunctionResponse != nil && p.FunctionResponse.ID != "" {
+			toolCallIDs = append(toolCallIDs, p.FunctionResponse.ID)
+		}
+	}
+	replaced, rebuildErr := ae.replaceInjectedToolResponses(ctx, getResp.Session, sessionID, toolCallIDs, event)
+	if rebuildErr != nil {
+		ae.log.Warn("failed to rebuild session for injected tool response, falling back to append",
+			slog.String("session_id", sessionID),
+			slog.String("error", rebuildErr.Error()),
+		)
+		replaced = false
+	}
+	if !replaced {
+		if appendErr := ae.sessionService.AppendEvent(ctx, getResp.Session, event); appendErr != nil {
+			return fmt.Errorf("failed to append FunctionResponse event: %w", appendErr)
+		}
 	}
 
 	ae.log.Info("injected FunctionResponse into ADK session",
 		slog.String("session_id", sessionID),
 		slog.Int("parts", len(parts)),
+		slog.Bool("rebuilt", replaced),
 	)
 	return nil
+}
+
+// replaceInjectedToolResponses rebuilds the ADK session so the sentinel
+// FunctionResponse(s) recorded for toolCallIDs (when the run paused) are
+// replaced with the real response event. Trailing events after the first
+// sentinel — the model's "Execution paused…" announcement — are dropped.
+// It returns (true, nil) when a sentinel was found and replaced, and
+// (false, nil) when no matching sentinel exists (so the caller can fall back
+// to a plain append).
+func (ae *AgentExecutor) replaceInjectedToolResponses(ctx context.Context, sess session.Session, sessionID string, toolCallIDs []string, replacement *session.Event) (bool, error) {
+	idSet := make(map[string]struct{}, len(toolCallIDs))
+	for _, id := range toolCallIDs {
+		if id != "" {
+			idSet[id] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return false, nil
+	}
+
+	events := sess.Events()
+	n := events.Len()
+
+	matchIdx := -1
+	for i := 0; i < n; i++ {
+		ev := events.At(i)
+		if ev == nil || ev.Content == nil {
+			continue
+		}
+		for _, part := range ev.Content.Parts {
+			if part != nil && part.FunctionResponse != nil {
+				if _, ok := idSet[part.FunctionResponse.ID]; ok {
+					matchIdx = i
+					break
+				}
+			}
+		}
+		if matchIdx >= 0 {
+			break
+		}
+	}
+	if matchIdx < 0 {
+		return false, nil
+	}
+
+	if err := ae.sessionService.Delete(ctx, &session.DeleteRequest{
+		AppName:   "agents",
+		UserID:    "system",
+		SessionID: sessionID,
+	}); err != nil {
+		return false, fmt.Errorf("delete session: %w", err)
+	}
+	createResp, err := ae.sessionService.Create(ctx, &session.CreateRequest{
+		AppName:   "agents",
+		UserID:    "system",
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("create replacement session: %w", err)
+	}
+	newSess := createResp.Session
+
+	// Replay events up to (but excluding) the first sentinel, then append the
+	// replacement. Events after the sentinel are intentionally dropped.
+	for i := 0; i < matchIdx; i++ {
+		if appendErr := ae.sessionService.AppendEvent(ctx, newSess, events.At(i)); appendErr != nil {
+			ae.log.Warn("failed to replay event during session rebuild",
+				slog.String("session_id", sessionID),
+				slog.Int("event_index", i),
+				slog.String("error", appendErr.Error()),
+			)
+		}
+	}
+	if appendErr := ae.sessionService.AppendEvent(ctx, newSess, replacement); appendErr != nil {
+		return false, fmt.Errorf("append replacement event: %w", appendErr)
+	}
+
+	return true, nil
 }
 
 // confirmResponseBody builds the FunctionResponse body for a single tool-policy

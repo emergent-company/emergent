@@ -41,10 +41,7 @@ type currentProjectResponse struct {
 // @Router       /api/projects/current [get]
 // @Security     bearerAuth
 func (h *Handler) Current(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.APITokenProjectID == "" {
 		return c.JSON(http.StatusOK, currentProjectResponse{
@@ -73,10 +70,7 @@ func (h *Handler) Current(c echo.Context) error {
 // @Router       /api/projects [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Parse query parameters; 0 (default) means no limit
 	limit := 0
@@ -124,11 +118,6 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/projects/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) Get(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	id := c.Param("id")
 	includeStats := c.QueryParam("include_stats") == "true"
 
@@ -154,10 +143,7 @@ func (h *Handler) Get(c echo.Context) error {
 // @Router       /api/projects [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req CreateProjectRequest
 	if err := c.Bind(&req); err != nil {
@@ -188,10 +174,6 @@ func (h *Handler) Create(c echo.Context) error {
 // @Router       /api/projects/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) Update(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 
@@ -222,10 +204,7 @@ func (h *Handler) Update(c echo.Context) error {
 // @Router       /api/projects/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) Delete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 
@@ -257,11 +236,6 @@ func (h *Handler) Delete(c echo.Context) error {
 // @Router       /api/projects/{id}/members [get]
 // @Security     bearerAuth
 func (h *Handler) ListMembers(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	projectID := c.Param("id")
 	includeStats := c.QueryParam("stats") == "true"
 
@@ -288,10 +262,6 @@ func (h *Handler) ListMembers(c echo.Context) error {
 // @Router       /api/projects/{id}/members/{userId} [delete]
 // @Security     bearerAuth
 func (h *Handler) RemoveMember(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("id")
 	userID := c.Param("userId")

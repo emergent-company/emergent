@@ -22,7 +22,7 @@ import (
 func newServiceFromBun(t *testing.T, db *bun.DB) *Service {
 	t.Helper()
 	repo := NewRepository(db, testLogger())
-	return NewService(repo, nil, nil, nil, nil, testLogger())
+	return NewService(ServiceParams{Repo: repo, Log: testLogger()})
 }
 
 // TestService_CreateBlueprint_Success verifies a created blueprint is a draft
@@ -391,8 +391,9 @@ func TestService_PrivateBlueprint_HiddenFromOtherProjects(t *testing.T) {
 	require.Empty(t, list)
 }
 
-// TestService_GlobalBlueprint_Immutability verifies Update/Publish/Deprecate/
-// Delete on a global blueprint are rejected with the immutability conflict.
+// TestService_GlobalBlueprint_Immutability verifies content mutations
+// (Update/Delete) on a global blueprint are rejected, while lifecycle
+// transitions (Publish/Deprecate) are allowed.
 func TestService_GlobalBlueprint_Immutability(t *testing.T) {
 	db := connectTestDB(t)
 	svc := newServiceFromBun(t, db)
@@ -408,18 +409,49 @@ func TestService_GlobalBlueprint_Immutability(t *testing.T) {
 	_, err = svc.UpdateBlueprint(ctx, proj, bp.ID, &UpdateBlueprintRequest{Description: &desc})
 	assertAppErrorCode(t, err, apperror.ErrConflict.Code)
 
-	_, err = svc.PublishBlueprint(ctx, proj, bp.ID)
-	assertAppErrorCode(t, err, apperror.ErrConflict.Code)
-
-	_, err = svc.DeprecateBlueprint(ctx, proj, bp.ID)
-	assertAppErrorCode(t, err, apperror.ErrConflict.Code)
-
 	err = svc.DeleteBlueprint(ctx, proj, bp.ID)
 	assertAppErrorCode(t, err, apperror.ErrConflict.Code)
+
+	// Lifecycle transitions are allowed on global blueprints.
+	pub, err := svc.PublishBlueprint(ctx, proj, bp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPublished, pub.Status)
+
+	dep, err := svc.DeprecateBlueprint(ctx, proj, bp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusDeprecated, dep.Status)
 
 	// The blueprint is still readable (immutable, not hidden).
 	_, err = svc.GetBlueprint(ctx, proj, bp.ID)
 	require.NoError(t, err)
+}
+
+// TestService_GlobalBlueprint_Publishable verifies a global draft can be
+// published (draft → published with a manifest checksum) — the gateway seed
+// prerequisite for the create → publish → apply install flow.
+func TestService_GlobalBlueprint_Publishable(t *testing.T) {
+	db := connectTestDB(t)
+	svc := newServiceFromBun(t, db)
+	ctx := context.Background()
+
+	proj := uuid.NewString()
+	bp, err := svc.CreateBlueprint(ctx, &CreateBlueprintRequest{
+		Name: uniqueName("svc-global-publish"), Version: "1.0.0", Manifest: json.RawMessage(`{"kind":"seed"}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "global", bp.Scope())
+	assert.Equal(t, StatusDraft, bp.Status)
+
+	pub, err := svc.PublishBlueprint(ctx, proj, bp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPublished, pub.Status)
+	require.NotEmpty(t, pub.Checksum, "published global blueprint must carry a manifest checksum")
+
+	// Published global remains visible (and thus applyable) from the caller's
+	// read scope.
+	got, err := svc.GetBlueprint(ctx, proj, bp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPublished, got.Status)
 }
 
 // TestService_NewVersion_OfGlobal_ProducesPrivateClone verifies forking a

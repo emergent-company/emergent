@@ -15,7 +15,7 @@
         "license": {
             "name": "Proprietary"
         },
-        "version": "0.47.0"
+        "version": "0.60.0"
     },
     "host": "localhost:5300",
     "basePath": "/",
@@ -1753,6 +1753,732 @@
                 }
             }
         },
+        "/api/blueprints": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns blueprints, optionally filtered by name via the ?name= query parameter",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "List blueprints",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by blueprint name",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Blueprints",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain_blueprints.Blueprint"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Creates a new blueprint draft with the given name, version, and manifest",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Create blueprint",
+                "parameters": [
+                    {
+                        "description": "Blueprint definition",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.CreateBlueprintRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created blueprint",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint with name and version already exists",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/applied": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns the blueprints applied to the caller's project, joined with blueprint metadata and the last-applied manifest checksum",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "List applied blueprints",
+                "responses": {
+                    "200": {
+                        "description": "Applied blueprints",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain_blueprints.AppliedBlueprint"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Project context required",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/name/{name}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns all versions of a blueprint name",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "List blueprint versions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Blueprint versions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain_blueprints.Blueprint"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns a blueprint by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Get blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Blueprint",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Updates a draft blueprint's description, author, and manifest",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Update blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.UpdateBlueprintRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated blueprint",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint is not a draft",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Deletes a draft blueprint",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Delete blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint is not a draft",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}/apply": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Materializes a blueprint's manifest into the project: schema packs, agent definitions, global skills, and seed graph objects/relationships. Idempotent create-or-update by name.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Apply blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Apply options",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.ApplyOptions"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Apply result",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.ApplyResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint is deprecated",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}/deprecate": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Transitions a blueprint to deprecated (from any status)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Deprecate blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deprecated blueprint",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Transitions a draft blueprint to published and computes a sha256 checksum of its manifest",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Publish blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Published blueprint",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint is not a draft",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}/unapply": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Reverses a blueprint's apply for the caller's project: deletes its agents, soft-removes its pack assignments, and marks the application unapplied. Skills and seed objects are skipped (global/shared and unattributed respectively).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Unapply blueprint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Unapply result",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.UnapplyResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request / project context required",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint not applied to this project",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/blueprints/{id}/versions": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Clones a blueprint into a new draft row with the given version",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blueprints"
+                ],
+                "summary": "Create new blueprint version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blueprint ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.NewVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "New blueprint version",
+                        "schema": {
+                            "$ref": "#/definitions/domain_blueprints.Blueprint"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Blueprint not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "409": {
+                        "description": "Blueprint with name and version already exists",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/chat/conversations": {
             "get": {
                 "security": [
@@ -3385,6 +4111,48 @@
                         "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/graph/branches/{branchId}/compare": {
+            "get": {
+                "description": "Returns per-object status: merged / unchanged / added / fast_forward / conflict / similar / deleted. Target defaults to \"main\".",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Compare a branch against another",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Source branch ID",
+                        "name": "branchId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target branch ID or 'main' (default 'main')",
+                        "name": "target",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain_graph.BranchMergeResponse"
                         }
                     }
                 }
@@ -8924,6 +9692,67 @@
                 }
             }
         },
+        "/api/projects/{projectId}/agent-approvals": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns tool-policy approval decisions for the project, newest first",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agent-questions"
+                ],
+                "summary": "List tool-approval audit records",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID (UUID)",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by decision (pending, approved, rejected, cancelled)",
+                        "name": "decision",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of approvals",
+                        "schema": {
+                            "$ref": "#/definitions/domain_agents.APIResponse-array_domain_agents_AgentToolApprovalDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/projects/{projectId}/agent-questions": {
             "get": {
                 "security": [
@@ -14056,6 +14885,259 @@
                 }
             }
         },
+        "/api/traces": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Proxies Tempo's trace search API, returning recent traces matching optional filters. Returns 503 when tracing is not enabled.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tracing"
+                ],
+                "summary": "Search traces",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Maximum number of traces to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by service name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tags (key=value, comma-separated)",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Minimum trace duration (e.g. '100ms', '1s')",
+                        "name": "min_duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start time for the search window (RFC3339)",
+                        "name": "start",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time for the search window (RFC3339)",
+                        "name": "end",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Scope search to a project by ID (sets a TraceQL project filter)",
+                        "name": "project_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Trace search results (Tempo passthrough)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Insufficient permissions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Tracing not enabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/traces/search": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Proxies Tempo's trace search API, returning recent traces matching optional filters. Returns 503 when tracing is not enabled.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tracing"
+                ],
+                "summary": "Search traces",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Maximum number of traces to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by service name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tags (key=value, comma-separated)",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Minimum trace duration (e.g. '100ms', '1s')",
+                        "name": "min_duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start time for the search window (RFC3339)",
+                        "name": "start",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End time for the search window (RFC3339)",
+                        "name": "end",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Scope search to a project by ID (sets a TraceQL project filter)",
+                        "name": "project_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Trace search results (Tempo passthrough)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Insufficient permissions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Tracing not enabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/traces/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Proxies Tempo's trace retrieval API, returning the full span tree for a trace. Returns 503 when tracing is not enabled.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tracing"
+                ],
+                "summary": "Get trace by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Response format: 'structured' returns a normalized span list instead of raw OTLP",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Full span tree (Tempo passthrough)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Insufficient permissions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Tracing not enabled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/user-activity/recent": {
             "get": {
                 "security": [
@@ -17539,6 +18621,28 @@
                 }
             }
         },
+        "/pricing": {
+            "get": {
+                "summary": "List global retail pricing",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain_provider.ProviderPricing"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/projects/{projectId}/model-config": {
             "get": {
                 "produces": [
@@ -17648,6 +18752,141 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/domain_modelconfig.EffectiveModelConfig"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{projectId}/pricing-overrides": {
+            "get": {
+                "summary": "List project pricing overrides",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain_provider.ProjectCustomPricing"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "summary": "Upsert a project pricing override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Pricing override (USD per 1M tokens)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_provider.UpsertProjectPricingOverridesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain_provider.ProjectCustomPricing"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{projectId}/pricing-overrides/{provider}/{model}": {
+            "delete": {
+                "summary": "Delete a project pricing override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provider name (google, google-vertex, openai, or deepseek)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Model name",
+                        "name": "model",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
                         }
                     }
                 }
@@ -18832,6 +20071,26 @@
                 }
             }
         },
+        "domain_agents.APIResponse-array_domain_agents_AgentToolApprovalDTO": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_agents.AgentToolApprovalDTO"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "domain_agents.APIResponse-domain_agents_AgentDTO": {
             "type": "object",
             "properties": {
@@ -18977,6 +20236,9 @@
         "domain_agents.AgentDTO": {
             "type": "object",
             "properties": {
+                "agentDefinitionId": {
+                    "type": "string"
+                },
                 "budgetUsd": {
                     "type": "number"
                 },
@@ -19294,6 +20556,51 @@
                 "RunStatusCancelling"
             ]
         },
+        "domain_agents.AgentToolApprovalDTO": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "argsSummary": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "decidedAt": {
+                    "type": "string"
+                },
+                "decidedBy": {
+                    "type": "string"
+                },
+                "decision": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "questionId": {
+                    "type": "string"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                }
+            }
+        },
         "domain_agents.AgentTriggerType": {
             "type": "string",
             "enum": [
@@ -19511,6 +20818,10 @@
                 "response"
             ],
             "properties": {
+                "message": {
+                    "description": "Message is an optional human-written reason attached to a tool-policy\nrejection. It is surfaced to the agent in the rejected result so it can\nadapt instead of silently dropping the direction.",
+                    "type": "string"
+                },
                 "response": {
                     "type": "string"
                 }
@@ -20022,6 +21333,243 @@
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "domain_blueprints.AppliedBlueprint": {
+            "type": "object",
+            "properties": {
+                "appliedAt": {
+                    "type": "string"
+                },
+                "author": {
+                    "type": "string"
+                },
+                "blueprintId": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.ApplyCounts": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain_blueprints.ApplyOptions": {
+            "type": "object",
+            "properties": {
+                "force": {
+                    "description": "Force is accepted for API compatibility; currently unused.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain_blueprints.ApplyResult": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "$ref": "#/definitions/domain_blueprints.ApplyCounts"
+                },
+                "blueprintId": {
+                    "type": "string"
+                },
+                "blueprintName": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "packs": {
+                    "$ref": "#/definitions/domain_blueprints.ApplyCounts"
+                },
+                "seed": {
+                    "$ref": "#/definitions/domain_blueprints.ApplyCounts"
+                },
+                "skills": {
+                    "$ref": "#/definitions/domain_blueprints.ApplyCounts"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.Blueprint": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "manifest": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.CreateBlueprintRequest": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "manifest": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.NewVersionRequest": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.UnapplyCounts": {
+            "type": "object",
+            "properties": {
+                "missing": {
+                    "type": "integer"
+                },
+                "removed": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain_blueprints.UnapplyResult": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "$ref": "#/definitions/domain_blueprints.UnapplyCounts"
+                },
+                "alreadyUnapplied": {
+                    "description": "idempotent short-circuit",
+                    "type": "boolean"
+                },
+                "blueprintId": {
+                    "type": "string"
+                },
+                "blueprintName": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "description": "stored (applied) checksum",
+                    "type": "string"
+                },
+                "drift": {
+                    "description": "applied checksum != current blueprint checksum",
+                    "type": "boolean"
+                },
+                "driftedAgents": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "packs": {
+                    "$ref": "#/definitions/domain_blueprints.UnapplyCounts"
+                },
+                "seed": {
+                    "$ref": "#/definitions/domain_blueprints.UnapplyCounts"
+                },
+                "skills": {
+                    "$ref": "#/definitions/domain_blueprints.UnapplyCounts"
+                },
+                "skippedSkills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_blueprints.UpdateBlueprintRequest": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "manifest": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
@@ -21344,6 +22892,129 @@
                 }
             }
         },
+        "domain_graph.BranchMergeObjectSummary": {
+            "type": "object",
+            "properties": {
+                "canonical_id": {
+                    "type": "string"
+                },
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enriched_keys": {
+                    "description": "keys added/updated from source",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "resolution": {
+                    "description": "\"enriched\", \"overwritten\", \"skipped\", \"absorbed\"",
+                    "type": "string"
+                },
+                "similar_target_id": {
+                    "description": "canonical_id of matched target",
+                    "type": "string"
+                },
+                "similar_target_name": {
+                    "description": "display name of matched target",
+                    "type": "string"
+                },
+                "similarity_score": {
+                    "description": "Similarity fields — populated when Status == \"similar\"",
+                    "type": "number"
+                },
+                "source_head_id": {
+                    "type": "string"
+                },
+                "source_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "description": "Status values: \"unchanged\", \"added\", \"fast_forward\", \"conflict\", \"deleted\", \"similar\"\n\"similar\" means no canonical_id match was found but a semantically similar object\nexists in the target above the similarity threshold. The policy determines the action.",
+                    "type": "string"
+                },
+                "target_head_id": {
+                    "type": "string"
+                },
+                "target_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "domain_graph.BranchMergeRelationshipSummary": {
+            "type": "object",
+            "properties": {
+                "canonical_id": {
+                    "type": "string"
+                },
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enriched_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "resolution": {
+                    "type": "string"
+                },
+                "similar_target_id": {
+                    "type": "string"
+                },
+                "similarity_score": {
+                    "description": "Similarity fields — populated when Status == \"similar\"",
+                    "type": "number"
+                },
+                "source_dst_id": {
+                    "type": "string"
+                },
+                "source_head_id": {
+                    "type": "string"
+                },
+                "source_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "source_src_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status values: \"unchanged\", \"added\", \"fast_forward\", \"conflict\", \"similar\"",
+                    "type": "string"
+                },
+                "target_dst_id": {
+                    "type": "string"
+                },
+                "target_head_id": {
+                    "type": "string"
+                },
+                "target_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target_src_id": {
+                    "type": "string"
+                }
+            }
+        },
         "domain_graph.BranchMergeRequest": {
             "type": "object",
             "required": [
@@ -21375,6 +23046,117 @@
                 "wait_for_embeddings": {
                     "description": "WaitForEmbeddings returns an error instead of proceeding when the source branch\nhas objects that have not yet been embedded. Useful when the caller wants to ensure\nfull similarity coverage before merging.",
                     "type": "boolean"
+                }
+            }
+        },
+        "domain_graph.BranchMergeResponse": {
+            "type": "object",
+            "properties": {
+                "added_count": {
+                    "type": "integer"
+                },
+                "applied": {
+                    "type": "boolean"
+                },
+                "applied_objects": {
+                    "type": "integer"
+                },
+                "conflict_count": {
+                    "type": "integer"
+                },
+                "conflict_strategy": {
+                    "type": "string"
+                },
+                "deleted_count": {
+                    "type": "integer"
+                },
+                "dryRun": {
+                    "type": "boolean"
+                },
+                "embeddings_pending": {
+                    "description": "source objects without embedding",
+                    "type": "integer"
+                },
+                "fast_forward_count": {
+                    "type": "integer"
+                },
+                "hard_limit": {
+                    "type": "integer"
+                },
+                "left_for_review_count": {
+                    "description": "LeftForReviewCount is the number of source objects that were NOT merged and\nremain on the source branch for human decision (conflicts preserved and\nsimilarity \"suggest\" matches). Non-zero implies a partial merge.",
+                    "type": "integer"
+                },
+                "merged_count": {
+                    "description": "MergedCount is the number of source objects already cloned to the target\nby a prior merge (merge ledger) and therefore not re-applied.",
+                    "type": "integer"
+                },
+                "objects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_graph.BranchMergeObjectSummary"
+                    }
+                },
+                "policy": {
+                    "type": "string"
+                },
+                "relationships": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_graph.BranchMergeRelationshipSummary"
+                    }
+                },
+                "relationships_added_count": {
+                    "type": "integer"
+                },
+                "relationships_conflict_count": {
+                    "type": "integer"
+                },
+                "relationships_fast_forward_count": {
+                    "type": "integer"
+                },
+                "relationships_similar_count": {
+                    "type": "integer"
+                },
+                "relationships_total": {
+                    "description": "Relationship merge info",
+                    "type": "integer"
+                },
+                "relationships_unchanged_count": {
+                    "type": "integer"
+                },
+                "resolved_count": {
+                    "type": "integer"
+                },
+                "similar_count": {
+                    "description": "objects matched by similarity",
+                    "type": "integer"
+                },
+                "similarity_enabled": {
+                    "description": "Similarity settings used for this merge",
+                    "type": "boolean"
+                },
+                "similarity_threshold": {
+                    "type": "number"
+                },
+                "skipped_count": {
+                    "type": "integer"
+                },
+                "source_branch_id": {
+                    "type": "string"
+                },
+                "target_branch_id": {
+                    "description": "nil = main graph",
+                    "type": "string"
+                },
+                "total_objects": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                },
+                "unchanged_count": {
+                    "type": "integer"
                 }
             }
         },
@@ -22020,6 +23802,10 @@
                 "last_accessed_at": {
                     "type": "string"
                 },
+                "merged_to_canonical_id": {
+                    "description": "MergedToCanonicalID points to the target-branch canonical_id this object\nwas cloned to during a merge (the merge ledger). Non-nil on source-branch\nobjects means \"already merged\"; used by compare/diff to distinguish merged\nfrom pending.",
+                    "type": "string"
+                },
                 "migration_archive": {
                     "description": "Migration archive - preserves dropped fields from schema migrations",
                     "type": "array",
@@ -22099,6 +23885,9 @@
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "delete_reason": {
                     "type": "string"
                 },
                 "deleted_at": {
@@ -22259,6 +24048,9 @@
                     "additionalProperties": {}
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "delete_reason": {
                     "type": "string"
                 },
                 "deleted_at": {
@@ -24273,6 +26065,10 @@
                 "auto_extract_objects": {
                     "type": "boolean"
                 },
+                "auto_merge_extraction_branches": {
+                    "description": "AutoMergeExtractionBranches enables auto-merging extraction staging branches\ninto the main graph once extraction completes (partial merge; added in migration 00129).",
+                    "type": "boolean"
+                },
                 "budget_alert_threshold": {
                     "type": "number"
                 },
@@ -24334,6 +26130,10 @@
                     "additionalProperties": {}
                 },
                 "auto_extract_objects": {
+                    "type": "boolean"
+                },
+                "auto_merge_extraction_branches": {
+                    "description": "AutoMergeExtractionBranches is emitted only when true.",
                     "type": "boolean"
                 },
                 "budget_usd": {
@@ -24434,6 +26234,9 @@
                 "auto_extract_objects": {
                     "type": "boolean"
                 },
+                "auto_merge_extraction_branches": {
+                    "type": "boolean"
+                },
                 "budget_alert_threshold": {
                     "type": "number"
                 },
@@ -24520,6 +26323,44 @@
                 }
             }
         },
+        "domain_provider.ProjectCustomPricing": {
+            "type": "object",
+            "properties": {
+                "audioInputPrice": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageInputPrice": {
+                    "type": "number"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "outputPrice": {
+                    "type": "number"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "provider": {
+                    "$ref": "#/definitions/domain_provider.ProviderType"
+                },
+                "textInputPrice": {
+                    "type": "number"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "videoInputPrice": {
+                    "type": "number"
+                }
+            }
+        },
         "domain_provider.ProjectProviderConfigResponse": {
             "type": "object",
             "properties": {
@@ -24584,6 +26425,38 @@
                 },
                 "updatedAt": {
                     "type": "string"
+                }
+            }
+        },
+        "domain_provider.ProviderPricing": {
+            "type": "object",
+            "properties": {
+                "audioInputPrice": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageInputPrice": {
+                    "type": "number"
+                },
+                "lastSynced": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "outputPrice": {
+                    "type": "number"
+                },
+                "provider": {
+                    "$ref": "#/definitions/domain_provider.ProviderType"
+                },
+                "textInputPrice": {
+                    "type": "number"
+                },
+                "videoInputPrice": {
+                    "type": "number"
                 }
             }
         },
@@ -24680,6 +26553,32 @@
                 },
                 "reply": {
                     "type": "string"
+                }
+            }
+        },
+        "domain_provider.UpsertProjectPricingOverridesRequest": {
+            "type": "object",
+            "properties": {
+                "audioInputPrice": {
+                    "type": "number"
+                },
+                "imageInputPrice": {
+                    "type": "number"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "outputPrice": {
+                    "type": "number"
+                },
+                "provider": {
+                    "$ref": "#/definitions/domain_provider.ProviderType"
+                },
+                "textInputPrice": {
+                    "type": "number"
+                },
+                "videoInputPrice": {
+                    "type": "number"
                 }
             }
         },
@@ -25885,6 +27784,10 @@
                 },
                 "schema_id": {
                     "type": "string"
+                },
+                "sourceBlueprintId": {
+                    "description": "SourceBlueprintID, when set, records the blueprint that owns this\nassignment. Used by blueprint unapply to avoid removing shared/manual\nassignments. Nil for manual assigns.",
+                    "type": "string"
                 }
             }
         },
@@ -26282,6 +28185,7 @@
             "type": "object",
             "properties": {
                 "added_props": {
+                    "description": "AddedProps lists props present in the new schema but absent from existing objects.",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -26294,18 +28198,21 @@
                     "type": "boolean"
                 },
                 "coerced_props": {
+                    "description": "CoercedProps lists props whose values need type coercion.",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "dropped_props": {
+                    "description": "DroppedProps lists props present in the old schema but absent from the new one.",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "migrated_props": {
+                    "description": "MigratedProps lists props carried over unchanged (union across objects, deduped).",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -26617,7 +28524,6 @@
             "type": "object",
             "properties": {
                 "auto_uninstall": {
-                    "description": "runtime-only flag",
                     "type": "boolean"
                 },
                 "chain": {
@@ -26661,6 +28567,46 @@
                 },
                 "to_schema_id": {
                     "type": "string"
+                }
+            }
+        },
+        "domain_schemas.SchemaMigrationPlan": {
+            "type": "object",
+            "properties": {
+                "added_properties": {
+                    "description": "AddedProperties lists properties added to existing types (target prop not in source).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_schemas.AddedProperty"
+                    }
+                },
+                "added_types": {
+                    "description": "AddedTypes lists type names present in the target schema but not the source.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "property_renames": {
+                    "description": "PropertyRenames lists property renames within types (from hints).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_schemas.PropertyRename"
+                    }
+                },
+                "removed_properties": {
+                    "description": "RemovedProperties lists properties that are intentionally dropped (from hints).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_schemas.RemovedProperty"
+                    }
+                },
+                "type_renames": {
+                    "description": "TypeRenames lists object/relationship type renames to apply (from hints).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_schemas.TypeRename"
+                    }
                 }
             }
         },
@@ -26710,41 +28656,6 @@
                 },
                 "total_objects": {
                     "type": "integer"
-                }
-            }
-        },
-        "domain_schemas.SchemaMigrationPlan": {
-            "type": "object",
-            "properties": {
-                "added_properties": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain_schemas.AddedProperty"
-                    }
-                },
-                "added_types": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "property_renames": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain_schemas.PropertyRename"
-                    }
-                },
-                "removed_properties": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain_schemas.RemovedProperty"
-                    }
-                },
-                "type_renames": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain_schemas.TypeRename"
-                    }
                 }
             }
         },
@@ -27436,8 +29347,32 @@
         "domain_skills.SkillMetadata": {
             "type": "object",
             "properties": {
+                "content_hash": {
+                    "description": "SHA-256 of content, computed server-side",
+                    "type": "string"
+                },
+                "license": {
+                    "description": "SPDX identifier or free text",
+                    "type": "string"
+                },
                 "location": {
                     "description": "source file path (e.g. from import)",
+                    "type": "string"
+                },
+                "origin_id": {
+                    "description": "external identifier of the source skill",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Provenance fields. These are preserved verbatim by the server on update and\nnever inferred or overwritten, with the exception of ContentHash which is\nalways computed server-side from the skill content at write time.",
+                    "type": "string"
+                },
+                "source_url": {
+                    "description": "URL the skill was imported from",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "skill version string",
                     "type": "string"
                 }
             }

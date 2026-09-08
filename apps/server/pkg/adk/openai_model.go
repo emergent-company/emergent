@@ -118,45 +118,6 @@ type responseFormat struct {
 	Type string `json:"type"`
 }
 
-// genaiSchemaToMap converts a genai.Schema to a plain map suitable for use
-// as an OpenAI json_schema response format schema.
-func genaiSchemaToMap(s *genai.Schema) map[string]any {
-	if s == nil {
-		return nil
-	}
-	m := map[string]any{}
-	if s.Type != "" {
-		m["type"] = strings.ToLower(string(s.Type))
-	}
-	if s.Description != "" {
-		m["description"] = s.Description
-	}
-	if len(s.Enum) > 0 {
-		m["enum"] = s.Enum
-	}
-	if len(s.Required) > 0 {
-		m["required"] = s.Required
-	}
-	if len(s.Properties) > 0 {
-		props := map[string]any{}
-		for k, v := range s.Properties {
-			props[k] = genaiSchemaToMap(v)
-		}
-		m["properties"] = props
-		// OpenAI strict mode requires additionalProperties: false on objects
-		m["additionalProperties"] = false
-	}
-	if s.Items != nil {
-		m["items"] = genaiSchemaToMap(s.Items)
-	}
-	if s.Nullable != nil && *s.Nullable {
-		// represent nullable as anyOf with null
-		inner := m
-		return map[string]any{"anyOf": []any{inner, map[string]any{"type": "null"}}}
-	}
-	return m
-}
-
 type openaiResponse struct {
 	Choices []struct {
 		Message struct {
@@ -224,19 +185,6 @@ func hasSubstantiveToolCall(contents []*genai.Content) bool {
 	for _, c := range contents {
 		for _, p := range c.Parts {
 			if p != nil && p.FunctionCall != nil && !coordinationTools[p.FunctionCall.Name] {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// hasToolResults returns true when the conversation history contains at least
-// one FunctionResponse — meaning a tool has already been called and responded.
-func hasToolResults(contents []*genai.Content) bool {
-	for _, c := range contents {
-		for _, p := range c.Parts {
-			if p != nil && p.FunctionResponse != nil {
 				return true
 			}
 		}

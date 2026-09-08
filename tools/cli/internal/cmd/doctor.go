@@ -772,7 +772,7 @@ func checkAuth(cfg *config.Config, configPath string) checkResult {
 
 	if creds.IsExpired() {
 		// Attempt silent refresh before giving up.
-		const oauthClientID = "362800068257972227"
+		oauthClientID := auth.OAuthClientID()
 		refreshed := false
 		if creds.RefreshToken != "" && creds.IssuerURL != "" {
 			if oidcConfig, err := auth.DiscoverOIDC(creds.IssuerURL); err == nil {

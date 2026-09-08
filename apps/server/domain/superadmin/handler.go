@@ -56,10 +56,7 @@ func getBoolParam(c echo.Context, name string) *bool {
 // @Router       /api/superadmin/me [get]
 // @Security     bearerAuth
 func (h *Handler) GetMe(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	isSuperadmin, role, err := h.repo.IsSuperadmin(c.Request().Context(), user.ID)
 	if err != nil {

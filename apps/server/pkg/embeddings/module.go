@@ -50,6 +50,7 @@ type serviceParams struct {
 	Cfg      *config.Config
 	Log      *slog.Logger
 	Resolver EmbeddingResolver `optional:"true"`
+	TestLLM  TestLLMChecker    `optional:"true"`
 }
 
 // Service provides embedding generation with automatic client selection
@@ -58,6 +59,7 @@ type Service struct {
 	resolver EmbeddingResolver // optional; nil → static config only
 	cfg      *config.Config    // kept for per-request transient client creation
 	log      *slog.Logger
+	testLLM  TestLLMChecker // optional; nil → no test-LLM mode
 	enabled  bool
 }
 
@@ -65,7 +67,7 @@ type Service struct {
 func NewService(p serviceParams) *Service {
 	embCfg := p.Cfg.Embeddings
 
-	if !embCfg.IsEnabled() && p.Resolver == nil {
+	if !embCfg.IsEnabled() && p.Resolver == nil && p.TestLLM == nil {
 		p.Log.Info("embeddings service disabled - no configuration provided")
 		return &Service{
 			client:  NewNoopClient(),
@@ -79,6 +81,7 @@ func NewService(p serviceParams) *Service {
 		resolver: p.Resolver,
 		cfg:      p.Cfg,
 		log:      p.Log,
+		testLLM:  p.TestLLM,
 		enabled:  false,
 	}
 
@@ -128,9 +131,10 @@ func NewService(p serviceParams) *Service {
 		})
 	}
 
-	// If we have a resolver, the service is considered enabled even without static config,
-	// because it can resolve credentials per-request.
-	if p.Resolver != nil {
+	// If we have a resolver (or test-LLM mode), the service is considered enabled
+	// even without static config, because it can resolve credentials per-request
+	// (or produce deterministic canned vectors).
+	if p.Resolver != nil || p.TestLLM != nil {
 		svc.enabled = true
 	}
 
@@ -145,6 +149,9 @@ func (s *Service) IsEnabled() bool {
 // EmbedQuery generates an embedding for a single query.
 // If an EmbeddingResolver is configured, per-request DB credentials are used.
 func (s *Service) EmbedQuery(ctx context.Context, query string) ([]float32, error) {
+	if s.isTestLLM(ctx) {
+		return cannedEmbedding(query), nil
+	}
 	client, err := s.resolveClient(ctx)
 	if err != nil {
 		return nil, err
@@ -155,6 +162,13 @@ func (s *Service) EmbedQuery(ctx context.Context, query string) ([]float32, erro
 // EmbedDocuments generates embeddings for multiple documents.
 // If an EmbeddingResolver is configured, per-request DB credentials are used.
 func (s *Service) EmbedDocuments(ctx context.Context, documents []string) ([][]float32, error) {
+	if s.isTestLLM(ctx) {
+		vecs := make([][]float32, len(documents))
+		for i, d := range documents {
+			vecs[i] = cannedEmbedding(d)
+		}
+		return vecs, nil
+	}
 	client, err := s.resolveClient(ctx)
 	if err != nil {
 		return nil, err
@@ -164,6 +178,9 @@ func (s *Service) EmbedDocuments(ctx context.Context, documents []string) ([][]f
 
 // EmbedQueryWithUsage generates an embedding with usage data (if supported by client)
 func (s *Service) EmbedQueryWithUsage(ctx context.Context, query string) (*vertex.EmbedResult, error) {
+	if s.isTestLLM(ctx) {
+		return &vertex.EmbedResult{Embedding: cannedEmbedding(query), Model: "test-llm", Provider: "test-llm"}, nil
+	}
 	client, model, provider, err := s.resolveClientWithMeta(ctx)
 	if err != nil {
 		return nil, err
@@ -181,6 +198,13 @@ func (s *Service) EmbedQueryWithUsage(ctx context.Context, query string) (*verte
 
 // EmbedDocumentsWithUsage generates embeddings with usage data (if supported by client)
 func (s *Service) EmbedDocumentsWithUsage(ctx context.Context, documents []string) (*vertex.BatchEmbedResult, error) {
+	if s.isTestLLM(ctx) {
+		vecs := make([][]float32, len(documents))
+		for i, d := range documents {
+			vecs[i] = cannedEmbedding(d)
+		}
+		return &vertex.BatchEmbedResult{Embeddings: vecs, Model: "test-llm", Provider: "test-llm"}, nil
+	}
 	client, model, provider, err := s.resolveClientWithMeta(ctx)
 	if err != nil {
 		return nil, err

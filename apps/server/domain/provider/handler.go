@@ -202,6 +202,21 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 	return c.JSON(http.StatusOK, models)
 }
 
+// ListPricing returns all global retail pricing rows (per provider and model,
+// per-modality USD prices per 1M tokens). Read-only; pricing is managed by the
+// internal sync.
+// @Summary List global retail pricing
+// @Success 200 {array} ProviderPricing
+// @Failure 401 {object} apperror.Error
+// @Router /pricing [get]
+func (h *Handler) ListPricing(c echo.Context) error {
+	rows, err := h.repo.ListPricing(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, rows)
+}
+
 // --- Usage & Cost Summary ---
 
 // GetProjectUsageSummary returns aggregated token usage and estimated costs for a project.
@@ -346,6 +361,137 @@ func (h *Handler) GetOrgUsageTimeSeries(c echo.Context) error {
 		Note: "Costs shown are estimates based on retail pricing and may not reflect your actual provider invoice.",
 		Data: rows,
 	})
+}
+
+// --- Project Pricing Overrides ---
+
+// UpsertProjectPricingOverridesRequest is the request body for upserting a
+// project pricing override. Prices are in USD per 1 million tokens.
+type UpsertProjectPricingOverridesRequest struct {
+	Provider        ProviderType `json:"provider"`
+	Model           string       `json:"model"`
+	TextInputPrice  float64      `json:"textInputPrice"`
+	ImageInputPrice float64      `json:"imageInputPrice"`
+	VideoInputPrice float64      `json:"videoInputPrice"`
+	AudioInputPrice float64      `json:"audioInputPrice"`
+	OutputPrice     float64      `json:"outputPrice"`
+}
+
+// projectPricingOverrideCtx injects the project's org into the request context
+// when the caller is using a project token (which doesn't carry an OrgID),
+// mirroring the usage-handler pattern. It satisfies assertCallerOwnsProject.
+func (h *Handler) projectPricingOverrideCtx(c echo.Context) {
+	ctx := c.Request().Context()
+	if auth.OrgIDFromContext(ctx) == "" {
+		orgID, err := h.creds.repo.GetOrgIDForProject(ctx, c.Param("projectId"))
+		if err == nil && orgID != "" {
+			ctx = auth.ContextWithOrgID(ctx, orgID)
+		}
+	}
+	c.SetRequest(c.Request().WithContext(ctx))
+}
+
+// ListProjectPricingOverrides returns all pricing overrides for a project.
+// @Summary List project pricing overrides
+// @Param projectId path string true "Project ID"
+// @Success 200 {array} ProjectCustomPricing
+// @Failure 401 {object} apperror.Error
+// @Failure 403 {object} apperror.Error
+// @Router /projects/{projectId}/pricing-overrides [get]
+func (h *Handler) ListProjectPricingOverrides(c echo.Context) error {
+	projectID := c.Param("projectId")
+	if projectID == "" {
+		return apperror.ErrBadRequest.WithMessage("projectId is required")
+	}
+
+	h.projectPricingOverrideCtx(c)
+	if err := h.creds.assertCallerOwnsProject(c.Request().Context(), projectID); err != nil {
+		return err
+	}
+
+	overrides, err := h.repo.ListProjectCustomPricing(c.Request().Context(), projectID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, overrides)
+}
+
+// UpsertProjectPricingOverrides creates or updates a pricing override for a project.
+// @Summary Upsert a project pricing override
+// @Param projectId path string true "Project ID"
+// @Param body body UpsertProjectPricingOverridesRequest true "Pricing override (USD per 1M tokens)"
+// @Success 200 {object} ProjectCustomPricing
+// @Failure 400 {object} apperror.Error
+// @Failure 401 {object} apperror.Error
+// @Failure 403 {object} apperror.Error
+// @Router /projects/{projectId}/pricing-overrides [put]
+func (h *Handler) UpsertProjectPricingOverrides(c echo.Context) error {
+	projectID := c.Param("projectId")
+	if projectID == "" {
+		return apperror.ErrBadRequest.WithMessage("projectId is required")
+	}
+
+	var req UpsertProjectPricingOverridesRequest
+	if err := c.Bind(&req); err != nil {
+		return apperror.ErrBadRequest.WithMessage("invalid request body")
+	}
+	if req.Provider == "" {
+		return apperror.ErrBadRequest.WithMessage("provider is required")
+	}
+	if req.Model == "" {
+		return apperror.ErrBadRequest.WithMessage("model is required")
+	}
+
+	h.projectPricingOverrideCtx(c)
+	if err := h.creds.assertCallerOwnsProject(c.Request().Context(), projectID); err != nil {
+		return err
+	}
+
+	entry := &ProjectCustomPricing{
+		ProjectID:       projectID,
+		Provider:        req.Provider,
+		Model:           req.Model,
+		TextInputPrice:  req.TextInputPrice,
+		ImageInputPrice: req.ImageInputPrice,
+		VideoInputPrice: req.VideoInputPrice,
+		AudioInputPrice: req.AudioInputPrice,
+		OutputPrice:     req.OutputPrice,
+	}
+	if err := h.repo.UpsertProjectCustomPricing(c.Request().Context(), entry); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, entry)
+}
+
+// DeleteProjectPricingOverride removes a pricing override from a project.
+// @Summary Delete a project pricing override
+// @Param projectId path string true "Project ID"
+// @Param provider path string true "Provider name (google, google-vertex, openai, or deepseek)"
+// @Param model path string true "Model name"
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} apperror.Error
+// @Failure 403 {object} apperror.Error
+// @Router /projects/{projectId}/pricing-overrides/{provider}/{model} [delete]
+func (h *Handler) DeleteProjectPricingOverride(c echo.Context) error {
+	projectID := c.Param("projectId")
+	if projectID == "" {
+		return apperror.ErrBadRequest.WithMessage("projectId is required")
+	}
+	provider := ProviderType(c.Param("provider"))
+	model := c.Param("model")
+	if provider == "" || model == "" {
+		return apperror.ErrBadRequest.WithMessage("provider and model are required")
+	}
+
+	h.projectPricingOverrideCtx(c)
+	if err := h.creds.assertCallerOwnsProject(c.Request().Context(), projectID); err != nil {
+		return err
+	}
+
+	if err := h.repo.DeleteProjectCustomPricing(c.Request().Context(), projectID, provider, model); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // GetOrgUsageByProject returns aggregated usage for an org broken down by project.
@@ -541,10 +687,7 @@ func (h *Handler) TestProvider(c echo.Context) error {
 // @Failure 401 {object} apperror.Error
 // @Router /users/me/usage [get]
 func (h *Handler) GetCurrentUserUsageSummary(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	since, until := parseTimeRange(c)
 	rows, err := h.repo.GetUserUsageSummary(c.Request().Context(), user.ID, since, until)
@@ -567,10 +710,7 @@ func (h *Handler) GetCurrentUserUsageSummary(c echo.Context) error {
 // @Failure 401 {object} apperror.Error
 // @Router /users/me/usage/timeseries [get]
 func (h *Handler) GetCurrentUserUsageTimeSeries(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	granularity := c.QueryParam("granularity")
 	since, until := parseTimeRange(c)

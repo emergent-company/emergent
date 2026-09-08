@@ -19,9 +19,9 @@ var Module = fx.Options(
 	fx.Provide(newStoreFromDB),
 	fx.Provide(newServiceFromConfig),
 	fx.Provide(NewHandler),
+	fx.Provide(provideImageResolver),
 	fx.Invoke(registerRoutes),
 	fx.Invoke(startAutoSeed),
-	fx.Invoke(wireImageResolver),
 )
 
 // newStoreFromDB creates a sandbox images store with the bun DB.
@@ -92,8 +92,8 @@ func startAutoSeed(lc fx.Lifecycle, svc *Service, db *bun.DB, cfg *config.Config
 	})
 }
 
-// wireImageResolver injects the image catalog resolver into the auto-provisioner.
-func wireImageResolver(svc *Service, provisioner *sandbox.AutoProvisioner, log *slog.Logger) {
-	provisioner.SetImageResolver(svc.AsImageResolver())
-	log.Info("sandbox image catalog resolver wired into auto-provisioner")
+// provideImageResolver exposes the sandbox image catalog resolver as
+// sandbox.ImageResolver for injection into the auto-provisioner.
+func provideImageResolver(svc *Service) sandbox.ImageResolver {
+	return svc.AsImageResolver()
 }

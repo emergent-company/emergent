@@ -15,7 +15,8 @@ import (
 
 const (
 	// pricingSyncSchedule runs the sync daily at 02:00 UTC.
-	pricingSyncSchedule = "0 2 * * *"
+	// Scheduler uses seconds-precision (6-field) cron: "second minute hour dom month dow".
+	pricingSyncSchedule = "0 0 2 * * *"
 
 	// pricingFetchURL is the source for retail pricing data.
 	// Format: JSON array of { provider, model, text_input, image_input,
@@ -163,6 +164,10 @@ func parsePricingEntries(raw []pricingEntry) []ProviderPricing {
 			pt = ProviderGoogleAI
 		case "google-vertex":
 			pt = ProviderVertexAI
+		case "openai":
+			pt = ProviderOpenAI
+		case "deepseek":
+			pt = ProviderDeepSeek
 		default:
 			continue // skip unknown providers
 		}

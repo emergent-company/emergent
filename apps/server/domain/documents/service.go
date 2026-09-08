@@ -211,31 +211,15 @@ func (s *Service) BulkDelete(ctx context.Context, projectID string, documentIDs 
 	return response, nil
 }
 
-// CreateFromUpload creates a document record from a file upload
-// If a document with the same file hash exists, returns the existing document
+// CreateFromUpload creates a document record from a file upload.
+// Every upload creates a new document — uploads are not deduplicated by file
+// hash. Silently collapsing an identical-content upload returned the existing
+// document's id, which surfaced to clients as a "stale id" (issue #381).
 func (s *Service) CreateFromUpload(ctx context.Context, params UploadParams) (*UploadDocumentResponse, error) {
 	// Apply defaults
 	filename := strings.TrimSpace(params.Filename)
 	if filename == "" {
 		filename = "unnamed"
-	}
-
-	// Check for existing document with same file hash (deduplication)
-	existingDoc, err := s.repo.GetByFileHash(ctx, params.ProjectID, params.FileHash)
-	if err != nil {
-		return nil, err
-	}
-	if existingDoc != nil {
-		s.log.Info("document upload deduplicated",
-			slog.String("projectId", params.ProjectID),
-			slog.String("existingId", existingDoc.ID),
-			slog.String("fileHash", params.FileHash))
-
-		return &UploadDocumentResponse{
-			Document:           toDocumentSummary(existingDoc),
-			IsDuplicate:        true,
-			ExistingDocumentID: &existingDoc.ID,
-		}, nil
 	}
 
 	// Determine conversion status based on mime type and filename
@@ -265,19 +249,7 @@ func (s *Service) CreateFromUpload(ctx context.Context, params UploadParams) (*U
 		doc.Metadata = params.Metadata
 	}
 
-	err = s.repo.Create(ctx, doc)
-	if err != nil {
-		// Handle race condition: another request may have created the same document
-		if appErr, ok := err.(*apperror.Error); ok && appErr.Code == "duplicate" {
-			existingDoc, getErr := s.repo.GetByFileHash(ctx, params.ProjectID, params.FileHash)
-			if getErr == nil && existingDoc != nil {
-				return &UploadDocumentResponse{
-					Document:           toDocumentSummary(existingDoc),
-					IsDuplicate:        true,
-					ExistingDocumentID: &existingDoc.ID,
-				}, nil
-			}
-		}
+	if err := s.repo.Create(ctx, doc); err != nil {
 		return nil, err
 	}
 

@@ -85,15 +85,6 @@ curl -X POST https://api.dev.emergent-company.ai/api/documents/upload \
 }
 ```
 
-**200 OK** — duplicate detected (same file hash already in project):
-```json
-{
-  "document": { ... },
-  "isDuplicate": true,
-  "existingDocumentId": "existing-doc-uuid"
-}
-```
-
 **400 Bad Request** — missing file or invalid request  
 **413 Request Entity Too Large** — file exceeds 500 MB  
 **415 Unsupported Media Type** — MIME type not in allowlist  
@@ -150,7 +141,7 @@ curl -X POST https://api.dev.emergent-company.ai/api/documents/upload/batch \
 }
 ```
 
-**Possible `status` values:** `"success"`, `"duplicate"`, `"failed"`
+**Possible `status` values:** `"success"`, `"failed"`
 
 ---
 
@@ -174,7 +165,7 @@ Example: `proj-abc/org-xyz/550e8400-e29b-41d4-a716-document.pdf`
 
 ## Parsing / Extraction Pipeline
 
-After a successful upload (non-duplicate), a `DocumentParsingJob` is queued:
+After a successful upload, a `DocumentParsingJob` is queued:
 
 1. **Worker downloads** the file from S3 (max 500 MB)
 2. **Routes by MIME type:**

@@ -20,8 +20,12 @@ type tempoAttribute struct {
 }
 
 type tempoSpan struct {
-	Name       string           `json:"name"`
-	Attributes []tempoAttribute `json:"attributes"`
+	SpanID            string           `json:"spanId"`
+	ParentSpanID      string           `json:"parentSpanId"`
+	Name              string           `json:"name"`
+	StartTimeUnixNano string           `json:"startTimeUnixNano"`
+	EndTimeUnixNano   string           `json:"endTimeUnixNano"`
+	Attributes        []tempoAttribute `json:"attributes"`
 }
 
 type tempoScopeSpans struct {
@@ -36,12 +40,26 @@ type tempoTraceResponse struct {
 	Batches []tempoBatch `json:"batches"`
 }
 
-// ── Token aggregation from trace ─────────────────────────────────────────────
+// ── Trace fetching ────────────────────────────────────────────────────────────
 
-// GetTokenUsageFromTrace fetches a trace from Tempo by traceID, finds all
-// call_llm spans, and aggregates input/output token counts into a RunTokenUsage.
-// Returns nil, nil when Tempo is unreachable or the trace has no call_llm spans.
-func GetTokenUsageFromTrace(ctx context.Context, tempoBaseURL, traceID string) (*RunTokenUsage, error) {
+// RunTraceSpan is a flattened OTLP span from a run's Tempo trace. The tree is
+// reconstructible client-side via ParentSpanID (empty for the root span).
+type RunTraceSpan struct {
+	SpanID        string `json:"spanId"`
+	ParentSpanID  string `json:"parentSpanId"`
+	Name          string `json:"name"`
+	StartUnixNano int64  `json:"startUnixNano"`
+	EndUnixNano   int64  `json:"endUnixNano"`
+	InputTokens   int64  `json:"inputTokens"`
+	OutputTokens  int64  `json:"outputTokens"`
+	Model         string `json:"model"`
+}
+
+// fetchTempoTrace performs a single GET /api/traces/{traceID} against Tempo.
+// Returns nil, nil when tempoBaseURL/traceID is empty, Tempo is unreachable,
+// the response is non-200, or the body is not decodable — callers degrade
+// gracefully instead of failing the enclosing API call.
+func fetchTempoTrace(ctx context.Context, tempoBaseURL, traceID string) (*tempoTraceResponse, error) {
 	if tempoBaseURL == "" || traceID == "" {
 		return nil, nil
 	}
@@ -69,7 +87,54 @@ func GetTokenUsageFromTrace(ctx context.Context, tempoBaseURL, traceID string) (
 	if err := json.NewDecoder(resp.Body).Decode(&trace); err != nil {
 		return nil, nil
 	}
+	return &trace, nil
+}
 
+// GetTraceSpans fetches a trace from Tempo by traceID ONCE and returns both the
+// flattened span list (every span in the trace, tree-shaped via parentSpanId)
+// and the aggregated RunTokenUsage (from call_llm spans). Returns nil, nil, nil
+// when tempoBaseURL/traceID is empty, Tempo is unreachable, or the response is
+// non-200.
+func GetTraceSpans(ctx context.Context, tempoBaseURL, traceID string) ([]RunTraceSpan, *RunTokenUsage, error) {
+	trace, err := fetchTempoTrace(ctx, tempoBaseURL, traceID)
+	if trace == nil {
+		return nil, nil, err
+	}
+	return flattenTraceSpans(trace), aggregateTokenUsage(trace), nil
+}
+
+// flattenTraceSpans converts every span in the trace into a flat RunTraceSpan
+// list, preserving the order Tempo served them in. startTimeUnixNano/
+// endTimeUnixNano come from OTLP as decimal strings; unparseable or absent
+// timings become 0. inputTokens/outputTokens come from the
+// memory.llm.usage.input_tokens / memory.llm.usage.output_tokens attributes
+// (intValue is a string in OTLP; 0 if absent). model comes from
+// memory.llm.request.model (empty if absent).
+func flattenTraceSpans(trace *tempoTraceResponse) []RunTraceSpan {
+	var out []RunTraceSpan
+	for _, batch := range trace.Batches {
+		for _, ss := range batch.ScopeSpans {
+			for _, span := range ss.Spans {
+				out = append(out, RunTraceSpan{
+					SpanID:        span.SpanID,
+					ParentSpanID:  span.ParentSpanID,
+					Name:          span.Name,
+					StartUnixNano: tempoUnixNano(span.StartTimeUnixNano),
+					EndUnixNano:   tempoUnixNano(span.EndTimeUnixNano),
+					InputTokens:   tempoAttrInt(span.Attributes, "memory.llm.usage.input_tokens"),
+					OutputTokens:  tempoAttrInt(span.Attributes, "memory.llm.usage.output_tokens"),
+					Model:         tempoAttrStr(span.Attributes, "memory.llm.request.model"),
+				})
+			}
+		}
+	}
+	return out
+}
+
+// aggregateTokenUsage finds all call_llm spans in a fetched trace and aggregates
+// input/output token counts into a RunTokenUsage. Returns nil when the trace has
+// no call_llm spans with token data.
+func aggregateTokenUsage(trace *tempoTraceResponse) *RunTokenUsage {
 	var totalInput, totalOutput int64
 	// Track model occurrence counts to pick the dominant model.
 	modelCounts := map[string]int{}
@@ -90,7 +155,7 @@ func GetTokenUsageFromTrace(ctx context.Context, tempoBaseURL, traceID string) (
 	}
 
 	if totalInput == 0 && totalOutput == 0 {
-		return nil, nil
+		return nil
 	}
 
 	// Pick the most-used model name across all call_llm spans.
@@ -107,7 +172,26 @@ func GetTokenUsageFromTrace(ctx context.Context, tempoBaseURL, traceID string) (
 		TotalInputTokens:  totalInput,
 		TotalOutputTokens: totalOutput,
 		Model:             dominantModel,
-	}, nil
+	}
+}
+
+// GetTokenUsageFromTrace fetches a trace from Tempo by traceID, finds all
+// call_llm spans, and aggregates input/output token counts into a RunTokenUsage.
+// Returns nil, nil when Tempo is unreachable or the trace has no call_llm spans.
+// Thin wrapper over GetTraceSpans — both share a single Tempo fetch.
+func GetTokenUsageFromTrace(ctx context.Context, tempoBaseURL, traceID string) (*RunTokenUsage, error) {
+	_, usage, err := GetTraceSpans(ctx, tempoBaseURL, traceID)
+	return usage, err
+}
+
+// tempoUnixNano parses an OTLP startTimeUnixNano/endTimeUnixNano value. OTLP
+// JSON emits these as decimal strings; missing or invalid values yield 0.
+func tempoUnixNano(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	v, _ := strconv.ParseInt(s, 10, 64)
+	return v
 }
 
 // tempoAttrInt extracts an integer attribute value from a Tempo span.

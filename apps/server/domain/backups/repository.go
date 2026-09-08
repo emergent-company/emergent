@@ -49,11 +49,13 @@ func (r *Repository) Create(ctx context.Context, backup *Backup) error {
 // GetByID retrieves a backup by ID
 func (r *Repository) GetByID(ctx context.Context, orgID, backupID string) (*Backup, error) {
 	var backup Backup
-	err := r.db.NewSelect().
+	q := r.db.NewSelect().
 		Model(&backup).
-		Where("id = ?", backupID).
-		Where("organization_id = ?", orgID).
-		Scan(ctx)
+		Where("id = ?", backupID)
+	if orgID != "" {
+		q = q.Where("organization_id = ?", orgID)
+	}
+	err := q.Scan(ctx)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -227,4 +229,67 @@ func (r *Repository) GetSoftDeletedBackups(ctx context.Context, before time.Time
 	}
 
 	return backups, nil
+}
+
+// CreateRestore inserts a new restore job record.
+func (r *Repository) CreateRestore(ctx context.Context, restore *Restore) error {
+	_, err := r.db.NewInsert().
+		Model(restore).
+		Exec(ctx)
+
+	if err != nil {
+		r.log.Error("failed to create restore",
+			slog.String("backup_id", restore.BackupID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("create restore: %w", err)
+	}
+
+	r.log.Info("restore created",
+		slog.String("id", restore.ID),
+		slog.String("backup_id", restore.BackupID),
+		slog.String("mode", restore.Mode),
+	)
+
+	return nil
+}
+
+// GetRestore retrieves a restore job by ID.
+func (r *Repository) GetRestore(ctx context.Context, id string) (*Restore, error) {
+	var restore Restore
+	err := r.db.NewSelect().
+		Model(&restore).
+		Where("id = ?", id).
+		Scan(ctx)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		r.log.Error("failed to get restore",
+			slog.String("id", id),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("get restore: %w", err)
+	}
+
+	return &restore, nil
+}
+
+// UpdateRestore persists changes to a restore job record.
+func (r *Repository) UpdateRestore(ctx context.Context, restore *Restore) error {
+	_, err := r.db.NewUpdate().
+		Model(restore).
+		WherePK().
+		Exec(ctx)
+
+	if err != nil {
+		r.log.Error("failed to update restore",
+			slog.String("id", restore.ID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("update restore: %w", err)
+	}
+
+	return nil
 }

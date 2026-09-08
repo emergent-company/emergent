@@ -30,6 +30,12 @@ type Config struct {
 	// (audio transcription can take hours). Defaults to 480 (8 hours).
 	DocumentParsingStaleMinutes int
 
+	// StaleBackupCleanupInterval is the interval for marking stuck backups as failed
+	StaleBackupCleanupInterval time.Duration
+
+	// StaleBackupMinutes is how long a backup can be "creating" before it is considered stale
+	StaleBackupMinutes int
+
 	// Cron schedule overrides (take precedence over intervals when set)
 	// Standard cron format with seconds: "second minute hour day-of-month month day-of-week"
 	// Examples: "0 */5 * * * *" (every 5 min), "0 0 2 * * *" (daily at 2am)
@@ -37,6 +43,7 @@ type Config struct {
 	TagCleanupSchedule           string
 	CacheCleanupSchedule         string
 	StaleJobCleanupSchedule      string
+	StaleBackupCleanupSchedule   string
 
 	// DatabaseBackupSchedule is the cron schedule for full database backups
 	// Standard cron format with seconds: "second minute hour day-of-month month day-of-week"
@@ -71,6 +78,9 @@ func NewConfig() *Config {
 		TagCleanupSchedule:           getEnvString("TAG_CLEANUP_SCHEDULE", ""),
 		CacheCleanupSchedule:         getEnvString("CACHE_CLEANUP_SCHEDULE", ""),
 		StaleJobCleanupSchedule:      getEnvString("STALE_JOB_CLEANUP_SCHEDULE", ""),
+		StaleBackupCleanupInterval:   getEnvDuration("STALE_BACKUP_CLEANUP_INTERVAL_MS", 15*time.Minute),
+		StaleBackupMinutes:           getEnvInt("STALE_BACKUP_MINUTES", 60),
+		StaleBackupCleanupSchedule:   getEnvString("STALE_BACKUP_CLEANUP_SCHEDULE", ""),
 		DatabaseBackupSchedule:       getEnvString("DATABASE_BACKUP_SCHEDULE", "0 0 7 * * *"),
 		ZitadelProfileSyncSchedule:   getEnvString("ZITADEL_PROFILE_SYNC_SCHEDULE", "0 0 * * * *"),
 		SessionCleanupSchedule:       getEnvString("SESSION_CLEANUP_SCHEDULE", "0 0 3 * * *"),

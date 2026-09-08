@@ -12,7 +12,7 @@ import (
 )
 
 // oauthClientID is the client ID for the memory-cli OAuth app.
-const oauthClientID = "362800068257972227"
+var oauthClientID = cliauth.OAuthClientID()
 
 // Client wraps the SDK client for CLI usage
 type Client struct {

@@ -11,6 +11,9 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
+// Keep apperror imported for swagger type resolution (@Failure {object} apperror.Error).
+var _ = apperror.Error{}
+
 // MetricsHandler handles job metrics requests
 type MetricsHandler struct {
 	db *bun.DB
@@ -43,16 +46,6 @@ type AllJobMetrics struct {
 	Timestamp string            `json:"timestamp"`
 }
 
-// queueDef describes a job queue and how to scope it.
-type queueDef struct {
-	name string
-	// baseQuery is the full SELECT ... FROM ... (optionally with a WHERE placeholder).
-	// Use a func so we can build the right query per-scope at runtime.
-	projectQuery string // query when scoped to a project (includes project filter)
-	globalQuery  string // query when not scoped (all projects)
-	systemOnly   bool   // if true, only include when scope=account (e.g. email)
-}
-
 const selectCounts = `
 	SELECT
 		COUNT(*) FILTER (WHERE status = 'pending') as pending,
@@ -75,10 +68,7 @@ const selectCounts = `
 // @Router       /api/metrics/jobs [get]
 // @Security     bearerAuth
 func (h *MetricsHandler) JobMetrics(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	ctx := c.Request().Context()
 

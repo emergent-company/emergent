@@ -57,7 +57,7 @@ func newNoRowsRepository(t *testing.T) *Repository {
 // newRememberStatusMCPHandler builds an MCPToolHandler over a no-rows repo.
 func newRememberStatusMCPHandler(t *testing.T) *MCPToolHandler {
 	t.Helper()
-	return NewMCPToolHandler(newNoRowsRepository(t), nil, slog.Default())
+	return NewMCPToolHandler(newNoRowsRepository(t), nil, slog.Default(), nil, nil)
 }
 
 // TestBuildRememberStatus_UnknownRunReturnsErrRunNotFound verifies the not-found

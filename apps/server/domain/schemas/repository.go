@@ -286,7 +286,7 @@ func (r *Repository) MigrateTypes(ctx context.Context, projectID string, req *Mi
 					UPDATE kb.graph_objects
 					SET properties = (properties - ?) || jsonb_build_object(?, properties->?),
 					    updated_at = NOW()
-					WHERE project_id = ? AND type = ? AND properties ? ?
+					WHERE project_id = ? AND type = ? AND properties->? IS NOT NULL
 					RETURNING 1
 				) SELECT COUNT(*) FROM updated
 			`, pr.From, pr.To, pr.From, projectID, pr.TypeName, pr.From).Scan(ctx, &objCount)

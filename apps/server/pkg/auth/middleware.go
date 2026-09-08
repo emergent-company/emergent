@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -837,15 +838,15 @@ func (m *Middleware) cacheIntrospection(ctx context.Context, token string, claim
 		"name":        claims.Name,
 	}
 
-	_, err := m.db.NewInsert().
-		TableExpr("kb.auth_introspection_cache").
-		Model(&struct {
-			TokenHash         string         `bun:"token_hash"`
-			IntrospectionData map[string]any `bun:"introspection_data,type:jsonb"`
-			ExpiresAt         time.Time      `bun:"expires_at"`
-		}{
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	_, err = m.db.NewInsert().
+		Model(&introspectionCacheEntry{
 			TokenHash:         tokenHash,
-			IntrospectionData: data,
+			IntrospectionData: raw,
 			ExpiresAt:         expiresAt,
 		}).
 		On("CONFLICT (token_hash) DO UPDATE").
@@ -954,43 +955,22 @@ func GetAllScopes() []string {
 }
 
 // MustGetUser retrieves the authenticated user from the Echo context.
-// It is safe to call without a nil-check on routes protected by RequireProject().
-// Panics if called on a route where RequireProject() was not applied and the user is nil.
+// It is safe to call without a nil-check on routes protected by the auth middleware
+// (Middleware.RequireAuth / RequireProjectID).
+// Panics if called on a route where auth middleware was not applied and the user is nil.
 func MustGetUser(c echo.Context) *AuthUser {
 	user := GetUser(c)
 	if user == nil {
-		panic("auth: MustGetUser called on unauthenticated context — ensure RequireProject() middleware is applied")
+		panic("auth: MustGetUser called on unauthenticated context — ensure RequireAuth/RequireProjectID middleware is applied")
 	}
 	return user
 }
 
 // GetProjectUUID extracts and UUID-parses the project ID from the authenticated user on the context.
-// Replaces local getProjectID() helpers in domain handlers.
 func GetProjectUUID(c echo.Context) (uuid.UUID, error) {
 	projectID, err := GetProjectID(c)
 	if err != nil {
 		return uuid.UUID{}, err
 	}
 	return uuid.Parse(projectID)
-}
-
-// RequireProject returns an Echo middleware that enforces:
-//  1. A non-nil authenticated user exists on the context.
-//  2. The user has a non-empty ProjectID.
-//
-// Handlers behind this middleware may safely call MustGetUser(c) and GetProjectUUID(c)
-// without additional nil checks.
-func RequireProject() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			user := GetUser(c)
-			if user == nil {
-				return apperror.ErrUnauthorized
-			}
-			if user.ProjectID == "" && user.APITokenProjectID == "" {
-				return apperror.ErrBadRequest.WithMessage("x-project-id header required")
-			}
-			return next(c)
-		}
-	}
 }

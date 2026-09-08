@@ -339,6 +339,19 @@ definitions:
       success:
         type: boolean
     type: object
+  domain_agents.APIResponse-array_domain_agents_AgentToolApprovalDTO:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/domain_agents.AgentToolApprovalDTO'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
   domain_agents.APIResponse-domain_agents_AgentDTO:
     properties:
       data:
@@ -433,6 +446,8 @@ definitions:
     type: object
   domain_agents.AgentDTO:
     properties:
+      agentDefinitionId:
+        type: string
       budgetUsd:
         type: number
       capabilities:
@@ -659,6 +674,36 @@ definitions:
     - RunStatusPaused
     - RunStatusCancelled
     - RunStatusCancelling
+  domain_agents.AgentToolApprovalDTO:
+    properties:
+      agentId:
+        type: string
+      argsSummary:
+        additionalProperties: {}
+        type: object
+      conversationId:
+        type: string
+      createdAt:
+        type: string
+      decidedAt:
+        type: string
+      decidedBy:
+        type: string
+      decision:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      projectId:
+        type: string
+      questionId:
+        type: string
+      runId:
+        type: string
+      toolName:
+        type: string
+    type: object
   domain_agents.AgentTriggerType:
     enum:
     - schedule
@@ -805,6 +850,12 @@ definitions:
     - EventTypeDeleted
   domain_agents.RespondToQuestionRequest:
     properties:
+      message:
+        description: |-
+          Message is an optional human-written reason attached to a tool-policy
+          rejection. It is surfaced to the agent in the rejected result so it can
+          adapt instead of silently dropping the direction.
+        type: string
       response:
         type: string
     required:
@@ -1161,6 +1212,162 @@ definitions:
         $ref: '#/definitions/domain_backups.Cursor'
       total:
         type: integer
+    type: object
+  domain_blueprints.AppliedBlueprint:
+    properties:
+      appliedAt:
+        type: string
+      author:
+        type: string
+      blueprintId:
+        type: string
+      checksum:
+        type: string
+      description:
+        type: string
+      name:
+        type: string
+      version:
+        type: string
+    type: object
+  domain_blueprints.ApplyCounts:
+    properties:
+      created:
+        type: integer
+      skipped:
+        type: integer
+      updated:
+        type: integer
+    type: object
+  domain_blueprints.ApplyOptions:
+    properties:
+      force:
+        description: Force is accepted for API compatibility; currently unused.
+        type: boolean
+    type: object
+  domain_blueprints.ApplyResult:
+    properties:
+      agents:
+        $ref: '#/definitions/domain_blueprints.ApplyCounts'
+      blueprintId:
+        type: string
+      blueprintName:
+        type: string
+      checksum:
+        type: string
+      packs:
+        $ref: '#/definitions/domain_blueprints.ApplyCounts'
+      seed:
+        $ref: '#/definitions/domain_blueprints.ApplyCounts'
+      skills:
+        $ref: '#/definitions/domain_blueprints.ApplyCounts'
+      version:
+        type: string
+    type: object
+  domain_blueprints.Blueprint:
+    properties:
+      author:
+        type: string
+      checksum:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      manifest:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      projectId:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: string
+    type: object
+  domain_blueprints.CreateBlueprintRequest:
+    properties:
+      author:
+        type: string
+      description:
+        type: string
+      manifest:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      projectId:
+        type: string
+      version:
+        type: string
+    type: object
+  domain_blueprints.NewVersionRequest:
+    properties:
+      version:
+        type: string
+    type: object
+  domain_blueprints.UnapplyCounts:
+    properties:
+      missing:
+        type: integer
+      removed:
+        type: integer
+      skipped:
+        type: integer
+    type: object
+  domain_blueprints.UnapplyResult:
+    properties:
+      agents:
+        $ref: '#/definitions/domain_blueprints.UnapplyCounts'
+      alreadyUnapplied:
+        description: idempotent short-circuit
+        type: boolean
+      blueprintId:
+        type: string
+      blueprintName:
+        type: string
+      checksum:
+        description: stored (applied) checksum
+        type: string
+      drift:
+        description: applied checksum != current blueprint checksum
+        type: boolean
+      driftedAgents:
+        items:
+          type: string
+        type: array
+      packs:
+        $ref: '#/definitions/domain_blueprints.UnapplyCounts'
+      seed:
+        $ref: '#/definitions/domain_blueprints.UnapplyCounts'
+      skills:
+        $ref: '#/definitions/domain_blueprints.UnapplyCounts'
+      skippedSkills:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  domain_blueprints.UpdateBlueprintRequest:
+    properties:
+      author:
+        type: string
+      description:
+        type: string
+      manifest:
+        items:
+          type: integer
+        type: array
     type: object
   domain_branches.BranchResponse:
     properties:
@@ -2060,6 +2267,94 @@ definitions:
       type:
         type: string
     type: object
+  domain_graph.BranchMergeObjectSummary:
+    properties:
+      canonical_id:
+        type: string
+      conflicts:
+        items:
+          type: string
+        type: array
+      enriched_keys:
+        description: keys added/updated from source
+        items:
+          type: string
+        type: array
+      resolution:
+        description: '"enriched", "overwritten", "skipped", "absorbed"'
+        type: string
+      similar_target_id:
+        description: canonical_id of matched target
+        type: string
+      similar_target_name:
+        description: display name of matched target
+        type: string
+      similarity_score:
+        description: Similarity fields — populated when Status == "similar"
+        type: number
+      source_head_id:
+        type: string
+      source_paths:
+        items:
+          type: string
+        type: array
+      status:
+        description: |-
+          Status values: "unchanged", "added", "fast_forward", "conflict", "deleted", "similar"
+          "similar" means no canonical_id match was found but a semantically similar object
+          exists in the target above the similarity threshold. The policy determines the action.
+        type: string
+      target_head_id:
+        type: string
+      target_paths:
+        items:
+          type: string
+        type: array
+    type: object
+  domain_graph.BranchMergeRelationshipSummary:
+    properties:
+      canonical_id:
+        type: string
+      conflicts:
+        items:
+          type: string
+        type: array
+      enriched_keys:
+        items:
+          type: string
+        type: array
+      resolution:
+        type: string
+      similar_target_id:
+        type: string
+      similarity_score:
+        description: Similarity fields — populated when Status == "similar"
+        type: number
+      source_dst_id:
+        type: string
+      source_head_id:
+        type: string
+      source_paths:
+        items:
+          type: string
+        type: array
+      source_src_id:
+        type: string
+      status:
+        description: 'Status values: "unchanged", "added", "fast_forward", "conflict",
+          "similar"'
+        type: string
+      target_dst_id:
+        type: string
+      target_head_id:
+        type: string
+      target_paths:
+        items:
+          type: string
+        type: array
+      target_src_id:
+        type: string
+    type: object
   domain_graph.BranchMergeRequest:
     properties:
       conflict_strategy:
@@ -2092,6 +2387,87 @@ definitions:
         type: boolean
     required:
     - source_branch_id
+    type: object
+  domain_graph.BranchMergeResponse:
+    properties:
+      added_count:
+        type: integer
+      applied:
+        type: boolean
+      applied_objects:
+        type: integer
+      conflict_count:
+        type: integer
+      conflict_strategy:
+        type: string
+      deleted_count:
+        type: integer
+      dryRun:
+        type: boolean
+      embeddings_pending:
+        description: source objects without embedding
+        type: integer
+      fast_forward_count:
+        type: integer
+      hard_limit:
+        type: integer
+      left_for_review_count:
+        description: |-
+          LeftForReviewCount is the number of source objects that were NOT merged and
+          remain on the source branch for human decision (conflicts preserved and
+          similarity "suggest" matches). Non-zero implies a partial merge.
+        type: integer
+      merged_count:
+        description: |-
+          MergedCount is the number of source objects already cloned to the target
+          by a prior merge (merge ledger) and therefore not re-applied.
+        type: integer
+      objects:
+        items:
+          $ref: '#/definitions/domain_graph.BranchMergeObjectSummary'
+        type: array
+      policy:
+        type: string
+      relationships:
+        items:
+          $ref: '#/definitions/domain_graph.BranchMergeRelationshipSummary'
+        type: array
+      relationships_added_count:
+        type: integer
+      relationships_conflict_count:
+        type: integer
+      relationships_fast_forward_count:
+        type: integer
+      relationships_similar_count:
+        type: integer
+      relationships_total:
+        description: Relationship merge info
+        type: integer
+      relationships_unchanged_count:
+        type: integer
+      resolved_count:
+        type: integer
+      similar_count:
+        description: objects matched by similarity
+        type: integer
+      similarity_enabled:
+        description: Similarity settings used for this merge
+        type: boolean
+      similarity_threshold:
+        type: number
+      skipped_count:
+        type: integer
+      source_branch_id:
+        type: string
+      target_branch_id:
+        description: nil = main graph
+        type: string
+      total_objects:
+        type: integer
+      truncated:
+        type: boolean
+      unchanged_count:
+        type: integer
     type: object
   domain_graph.BulkActionFilter:
     properties:
@@ -2536,6 +2912,13 @@ definitions:
         type: array
       last_accessed_at:
         type: string
+      merged_to_canonical_id:
+        description: |-
+          MergedToCanonicalID points to the target-branch canonical_id this object
+          was cloned to during a merge (the merge ledger). Non-nil on source-branch
+          objects means "already merged"; used by compare/diff to distinguish merged
+          from pending.
+        type: string
       migration_archive:
         description: Migration archive - preserves dropped fields from schema migrations
         items:
@@ -2591,6 +2974,8 @@ definitions:
       content_hash:
         type: string
       created_at:
+        type: string
+      delete_reason:
         type: string
       deleted_at:
         type: string
@@ -2698,6 +3083,8 @@ definitions:
         additionalProperties: {}
         type: object
       created_at:
+        type: string
+      delete_reason:
         type: string
       deleted_at:
         type: string
@@ -4051,6 +4438,11 @@ definitions:
         type: object
       auto_extract_objects:
         type: boolean
+      auto_merge_extraction_branches:
+        description: |-
+          AutoMergeExtractionBranches enables auto-merging extraction staging branches
+          into the main graph once extraction completes (partial merge; added in migration 00129).
+        type: boolean
       budget_alert_threshold:
         type: number
       budget_usd:
@@ -4092,6 +4484,9 @@ definitions:
         additionalProperties: {}
         type: object
       auto_extract_objects:
+        type: boolean
+      auto_merge_extraction_branches:
+        description: AutoMergeExtractionBranches is emitted only when true.
         type: boolean
       budget_usd:
         type: number
@@ -4161,6 +4556,8 @@ definitions:
         type: object
       auto_extract_objects:
         type: boolean
+      auto_merge_extraction_branches:
+        type: boolean
       budget_alert_threshold:
         type: number
       budget_usd:
@@ -4218,6 +4615,31 @@ definitions:
       totalVideo:
         type: integer
     type: object
+  domain_provider.ProjectCustomPricing:
+    properties:
+      audioInputPrice:
+        type: number
+      createdAt:
+        type: string
+      id:
+        type: string
+      imageInputPrice:
+        type: number
+      model:
+        type: string
+      outputPrice:
+        type: number
+      projectId:
+        type: string
+      provider:
+        $ref: '#/definitions/domain_provider.ProviderType'
+      textInputPrice:
+        type: number
+      updatedAt:
+        type: string
+      videoInputPrice:
+        type: number
+    type: object
   domain_provider.ProjectProviderConfigResponse:
     properties:
       baseUrl:
@@ -4261,6 +4683,27 @@ definitions:
         $ref: '#/definitions/domain_provider.ProviderType'
       updatedAt:
         type: string
+    type: object
+  domain_provider.ProviderPricing:
+    properties:
+      audioInputPrice:
+        type: number
+      id:
+        type: string
+      imageInputPrice:
+        type: number
+      lastSynced:
+        type: string
+      model:
+        type: string
+      outputPrice:
+        type: number
+      provider:
+        $ref: '#/definitions/domain_provider.ProviderType'
+      textInputPrice:
+        type: number
+      videoInputPrice:
+        type: number
     type: object
   domain_provider.ProviderSupportedModel:
     properties:
@@ -4326,6 +4769,23 @@ definitions:
         type: string
       reply:
         type: string
+    type: object
+  domain_provider.UpsertProjectPricingOverridesRequest:
+    properties:
+      audioInputPrice:
+        type: number
+      imageInputPrice:
+        type: number
+      model:
+        type: string
+      outputPrice:
+        type: number
+      provider:
+        $ref: '#/definitions/domain_provider.ProviderType'
+      textInputPrice:
+        type: number
+      videoInputPrice:
+        type: number
     type: object
   domain_provider.UpsertProviderConfigRequest:
     properties:
@@ -5136,6 +5596,12 @@ definitions:
         type: boolean
       schema_id:
         type: string
+      sourceBlueprintId:
+        description: |-
+          SourceBlueprintID, when set, records the blueprint that owns this
+          assignment. Used by blueprint unapply to avoid removing shared/manual
+          assignments. Nil for manual assigns.
+        type: string
     type: object
   domain_schemas.AssignPackResult:
     properties:
@@ -5411,6 +5877,8 @@ definitions:
   domain_schemas.MigrationTypeResult:
     properties:
       added_props:
+        description: AddedProps lists props present in the new schema but absent from
+          existing objects.
         items:
           type: string
         type: array
@@ -5419,14 +5887,19 @@ definitions:
       can_proceed:
         type: boolean
       coerced_props:
+        description: CoercedProps lists props whose values need type coercion.
         items:
           type: string
         type: array
       dropped_props:
+        description: DroppedProps lists props present in the old schema but absent
+          from the new one.
         items:
           type: string
         type: array
       migrated_props:
+        description: MigratedProps lists props carried over unchanged (union across
+          objects, deduped).
         items:
           type: string
         type: array
@@ -5636,7 +6109,6 @@ definitions:
   domain_schemas.SchemaMigrationJob:
     properties:
       auto_uninstall:
-        description: runtime-only flag
         type: boolean
       chain:
         items:
@@ -5666,6 +6138,38 @@ definitions:
         type: string
       to_schema_id:
         type: string
+    type: object
+  domain_schemas.SchemaMigrationPlan:
+    properties:
+      added_properties:
+        description: AddedProperties lists properties added to existing types (target
+          prop not in source).
+        items:
+          $ref: '#/definitions/domain_schemas.AddedProperty'
+        type: array
+      added_types:
+        description: AddedTypes lists type names present in the target schema but
+          not the source.
+        items:
+          type: string
+        type: array
+      property_renames:
+        description: PropertyRenames lists property renames within types (from hints).
+        items:
+          $ref: '#/definitions/domain_schemas.PropertyRename'
+        type: array
+      removed_properties:
+        description: RemovedProperties lists properties that are intentionally dropped
+          (from hints).
+        items:
+          $ref: '#/definitions/domain_schemas.RemovedProperty'
+        type: array
+      type_renames:
+        description: TypeRenames lists object/relationship type renames to apply (from
+          hints).
+        items:
+          $ref: '#/definitions/domain_schemas.TypeRename'
+        type: array
     type: object
   domain_schemas.SchemaMigrationPreviewRequest:
     properties:
@@ -5698,29 +6202,6 @@ definitions:
         type: string
       total_objects:
         type: integer
-    type: object
-  domain_schemas.SchemaMigrationPlan:
-    properties:
-      added_properties:
-        items:
-          $ref: '#/definitions/domain_schemas.AddedProperty'
-        type: array
-      added_types:
-        items:
-          type: string
-        type: array
-      property_renames:
-        items:
-          $ref: '#/definitions/domain_schemas.PropertyRename'
-        type: array
-      removed_properties:
-        items:
-          $ref: '#/definitions/domain_schemas.RemovedProperty'
-        type: array
-      type_renames:
-        items:
-          $ref: '#/definitions/domain_schemas.TypeRename'
-        type: array
     type: object
   domain_schemas.SchemaMigrationRollbackRequest:
     properties:
@@ -6183,8 +6664,29 @@ definitions:
     type: object
   domain_skills.SkillMetadata:
     properties:
+      content_hash:
+        description: SHA-256 of content, computed server-side
+        type: string
+      license:
+        description: SPDX identifier or free text
+        type: string
       location:
         description: source file path (e.g. from import)
+        type: string
+      origin_id:
+        description: external identifier of the source skill
+        type: string
+      source:
+        description: |-
+          Provenance fields. These are preserved verbatim by the server on update and
+          never inferred or overwritten, with the exception of ContentHash which is
+          always computed server-side from the skill content at write time.
+        type: string
+      source_url:
+        description: URL the skill was imported from
+        type: string
+      version:
+        description: skill version string
         type: string
     type: object
   domain_skills.UpdateSkillDTO:
@@ -7010,7 +7512,7 @@ info:
   license:
     name: Proprietary
   title: Memory API
-  version: 0.47.0
+  version: 0.60.0
 paths:
   /.well-known/oauth-protected-resource:
     get:
@@ -8150,6 +8652,478 @@ paths:
       summary: Token introspection
       tags:
       - auth
+  /api/blueprints:
+    get:
+      consumes:
+      - application/json
+      description: Returns blueprints, optionally filtered by name via the ?name=
+        query parameter
+      parameters:
+      - description: Filter by blueprint name
+        in: query
+        name: name
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Blueprints
+          schema:
+            items:
+              $ref: '#/definitions/domain_blueprints.Blueprint'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: List blueprints
+      tags:
+      - blueprints
+    post:
+      consumes:
+      - application/json
+      description: Creates a new blueprint draft with the given name, version, and
+        manifest
+      parameters:
+      - description: Blueprint definition
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain_blueprints.CreateBlueprintRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created blueprint
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint with name and version already exists
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Create blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a draft blueprint
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint is not a draft
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Delete blueprint
+      tags:
+      - blueprints
+    get:
+      consumes:
+      - application/json
+      description: Returns a blueprint by ID
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Blueprint
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Get blueprint
+      tags:
+      - blueprints
+    put:
+      consumes:
+      - application/json
+      description: Updates a draft blueprint's description, author, and manifest
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain_blueprints.UpdateBlueprintRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated blueprint
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint is not a draft
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Update blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}/apply:
+    post:
+      consumes:
+      - application/json
+      description: 'Materializes a blueprint''s manifest into the project: schema
+        packs, agent definitions, global skills, and seed graph objects/relationships.
+        Idempotent create-or-update by name.'
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Apply options
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/domain_blueprints.ApplyOptions'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Apply result
+          schema:
+            $ref: '#/definitions/domain_blueprints.ApplyResult'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint is deprecated
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Apply blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}/deprecate:
+    post:
+      consumes:
+      - application/json
+      description: Transitions a blueprint to deprecated (from any status)
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deprecated blueprint
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Deprecate blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      description: Transitions a draft blueprint to published and computes a sha256
+        checksum of its manifest
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Published blueprint
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint is not a draft
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Publish blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}/unapply:
+    post:
+      description: 'Reverses a blueprint''s apply for the caller''s project: deletes
+        its agents, soft-removes its pack assignments, and marks the application unapplied.
+        Skills and seed objects are skipped (global/shared and unattributed respectively).'
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Unapply result
+          schema:
+            $ref: '#/definitions/domain_blueprints.UnapplyResult'
+        "400":
+          description: Bad request / project context required
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint not applied to this project
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Unapply blueprint
+      tags:
+      - blueprints
+  /api/blueprints/{id}/versions:
+    post:
+      consumes:
+      - application/json
+      description: Clones a blueprint into a new draft row with the given version
+      parameters:
+      - description: Blueprint ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New version
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain_blueprints.NewVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: New blueprint version
+          schema:
+            $ref: '#/definitions/domain_blueprints.Blueprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "404":
+          description: Blueprint not found
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "409":
+          description: Blueprint with name and version already exists
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: Create new blueprint version
+      tags:
+      - blueprints
+  /api/blueprints/applied:
+    get:
+      description: Returns the blueprints applied to the caller's project, joined
+        with blueprint metadata and the last-applied manifest checksum
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Applied blueprints
+          schema:
+            items:
+              $ref: '#/definitions/domain_blueprints.AppliedBlueprint'
+            type: array
+        "400":
+          description: Project context required
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: List applied blueprints
+      tags:
+      - blueprints
+  /api/blueprints/name/{name}/versions:
+    get:
+      consumes:
+      - application/json
+      description: Returns all versions of a blueprint name
+      parameters:
+      - description: Blueprint name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Blueprint versions
+          schema:
+            items:
+              $ref: '#/definitions/domain_blueprints.Blueprint'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: List blueprint versions
+      tags:
+      - blueprints
   /api/chat/{id}:
     delete:
       description: Permanently deletes a conversation and all its messages
@@ -9222,6 +10196,35 @@ paths:
       summary: Create branch
       tags:
       - branches
+  /api/graph/branches/{branchId}/compare:
+    get:
+      description: 'Returns per-object status: merged / unchanged / added / fast_forward
+        / conflict / similar / deleted. Target defaults to "main".'
+      parameters:
+      - description: Project ID
+        in: path
+        name: project_id
+        required: true
+        type: string
+      - description: Source branch ID
+        in: path
+        name: branchId
+        required: true
+        type: string
+      - description: Target branch ID or 'main' (default 'main')
+        in: query
+        name: target
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain_graph.BranchMergeResponse'
+      summary: Compare a branch against another
+      tags:
+      - graph
   /api/graph/branches/{branchId}/merge-readiness:
     get:
       description: Returns the count of source branch objects that have not yet been
@@ -12859,6 +13862,46 @@ paths:
       summary: Remove project member
       tags:
       - projects
+  /api/projects/{projectId}/agent-approvals:
+    get:
+      consumes:
+      - application/json
+      description: Returns tool-policy approval decisions for the project, newest
+        first
+      parameters:
+      - description: Project ID (UUID)
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: Filter by decision (pending, approved, rejected, cancelled)
+        in: query
+        name: decision
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of approvals
+          schema:
+            $ref: '#/definitions/domain_agents.APIResponse-array_domain_agents_AgentToolApprovalDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      security:
+      - bearerAuth: []
+      summary: List tool-approval audit records
+      tags:
+      - agent-questions
   /api/projects/{projectId}/agent-questions:
     get:
       consumes:
@@ -16257,6 +17300,177 @@ paths:
       summary: Regenerate account API token
       tags:
       - api-tokens
+  /api/traces:
+    get:
+      consumes:
+      - application/json
+      description: Proxies Tempo's trace search API, returning recent traces matching
+        optional filters. Returns 503 when tracing is not enabled.
+      parameters:
+      - description: Maximum number of traces to return
+        in: query
+        name: limit
+        type: string
+      - description: Filter by service name
+        in: query
+        name: service_name
+        type: string
+      - description: Filter by tags (key=value, comma-separated)
+        in: query
+        name: tags
+        type: string
+      - description: Minimum trace duration (e.g. '100ms', '1s')
+        in: query
+        name: min_duration
+        type: string
+      - description: Start time for the search window (RFC3339)
+        in: query
+        name: start
+        type: string
+      - description: End time for the search window (RFC3339)
+        in: query
+        name: end
+        type: string
+      - description: Scope search to a project by ID (sets a TraceQL project filter)
+        in: query
+        name: project_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Trace search results (Tempo passthrough)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Insufficient permissions
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Tracing not enabled
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - bearerAuth: []
+      summary: Search traces
+      tags:
+      - tracing
+  /api/traces/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Proxies Tempo's trace retrieval API, returning the full span tree
+        for a trace. Returns 503 when tracing is not enabled.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Response format: ''structured'' returns a normalized span list
+          instead of raw OTLP'
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Full span tree (Tempo passthrough)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Insufficient permissions
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Tracing not enabled
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - bearerAuth: []
+      summary: Get trace by ID
+      tags:
+      - tracing
+  /api/traces/search:
+    get:
+      consumes:
+      - application/json
+      description: Proxies Tempo's trace search API, returning recent traces matching
+        optional filters. Returns 503 when tracing is not enabled.
+      parameters:
+      - description: Maximum number of traces to return
+        in: query
+        name: limit
+        type: string
+      - description: Filter by service name
+        in: query
+        name: service_name
+        type: string
+      - description: Filter by tags (key=value, comma-separated)
+        in: query
+        name: tags
+        type: string
+      - description: Minimum trace duration (e.g. '100ms', '1s')
+        in: query
+        name: min_duration
+        type: string
+      - description: Start time for the search window (RFC3339)
+        in: query
+        name: start
+        type: string
+      - description: End time for the search window (RFC3339)
+        in: query
+        name: end
+        type: string
+      - description: Scope search to a project by ID (sets a TraceQL project filter)
+        in: query
+        name: project_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Trace search results (Tempo passthrough)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Insufficient permissions
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Tracing not enabled
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - bearerAuth: []
+      summary: Search traces
+      tags:
+      - tracing
   /api/user-activity/recent:
     delete:
       consumes:
@@ -18535,6 +19749,20 @@ paths:
           schema:
             $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
       summary: Get org LLM usage time series
+  /pricing:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain_provider.ProviderPricing'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      summary: List global retail pricing
   /projects/{projectId}/model-config:
     delete:
       parameters:
@@ -18609,6 +19837,95 @@ paths:
       summary: Get effective model config for a project (resolved)
       tags:
       - model-config
+  /projects/{projectId}/pricing-overrides:
+    get:
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain_provider.ProjectCustomPricing'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      summary: List project pricing overrides
+    put:
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: Pricing override (USD per 1M tokens)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/domain_provider.UpsertProjectPricingOverridesRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain_provider.ProjectCustomPricing'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      summary: Upsert a project pricing override
+  /projects/{projectId}/pricing-overrides/{provider}/{model}:
+    delete:
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: Provider name (google, google-vertex, openai, or deepseek)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: Model name
+        in: path
+        name: model
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error'
+      summary: Delete a project pricing override
   /projects/{projectId}/providers:
     get:
       parameters:

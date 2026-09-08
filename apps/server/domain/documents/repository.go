@@ -202,26 +202,6 @@ func (r *Repository) GetByContentHash(ctx context.Context, projectID, contentHas
 	return &doc, nil
 }
 
-// GetByFileHash retrieves a document by file hash (for upload deduplication)
-func (r *Repository) GetByFileHash(ctx context.Context, projectID, fileHash string) (*Document, error) {
-	var doc Document
-	err := r.db.NewSelect().
-		Model(&doc).
-		Where("project_id = ?", projectID).
-		Where("file_hash = ?", fileHash).
-		Limit(1).
-		Scan(ctx)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get document by file hash: %w", err)
-	}
-
-	return &doc, nil
-}
-
 // GetDistinctSourceTypes returns all distinct source types with document counts for a project
 func (r *Repository) GetDistinctSourceTypes(ctx context.Context, projectID string) ([]SourceTypeWithCount, error) {
 	var results []SourceTypeWithCount
@@ -531,7 +511,7 @@ func (r *Repository) BulkDeleteWithCascade(ctx context.Context, projectID string
 		}
 
 		// 8. Delete documents
-		result, err = tx.NewDelete().
+		_, err = tx.NewDelete().
 			Model((*Document)(nil)).
 			Where("id IN (?)", bun.In(existingIDs)).
 			Where("project_id = ?", projectID).

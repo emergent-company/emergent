@@ -290,6 +290,14 @@ func (t Time) AsTime() time.Time {
 	return t.Time
 }
 
+// introspectionCacheEntry is the bun model for the kb.auth_introspection_cache table.
+type introspectionCacheEntry struct {
+	bun.BaseModel     `bun:"table:kb.auth_introspection_cache"`
+	TokenHash         string          `bun:"token_hash"`
+	IntrospectionData json.RawMessage `bun:"introspection_data,type:jsonb"`
+	ExpiresAt         time.Time       `bun:"expires_at"`
+}
+
 // getCached retrieves a cached introspection result from PostgreSQL
 func (z *ZitadelService) getCached(ctx context.Context, token string) (*IntrospectionResult, error) {
 	tokenHash := z.hashToken(token)
@@ -329,12 +337,7 @@ func (z *ZitadelService) cacheResult(ctx context.Context, token string, result *
 	}
 
 	_, err = z.db.NewInsert().
-		TableExpr("kb.auth_introspection_cache").
-		Model(&struct {
-			TokenHash         string          `bun:"token_hash"`
-			IntrospectionData json.RawMessage `bun:"introspection_data,type:jsonb"`
-			ExpiresAt         time.Time       `bun:"expires_at"`
-		}{
+		Model(&introspectionCacheEntry{
 			TokenHash:         tokenHash,
 			IntrospectionData: data,
 			ExpiresAt:         expiresAt,

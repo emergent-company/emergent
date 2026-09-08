@@ -276,8 +276,8 @@ func TestGetToolDefinitionsForProject_RelayToolsAppended(t *testing.T) {
 	}
 
 	svc := &Service{}
-	svc.SetRelayProvider(relay)
-	svc.SetAgentToolHandler(&stubAgentToolHandler{})
+	svc.relaySvc = relay
+	svc.agentToolHandler = &stubAgentToolHandler{}
 
 	tools := svc.GetToolDefinitionsForProject(context.Background(), projectID)
 	var found bool
@@ -296,7 +296,7 @@ func TestGetToolDefinitionsForProject_NoRelaySessionsForProject(t *testing.T) {
 		sessions: map[string][]*RelaySession{}, // no sessions
 	}
 	svc := &Service{}
-	svc.SetRelayProvider(relay)
+	svc.relaySvc = relay
 
 	tools := svc.GetToolDefinitionsForProject(context.Background(), projectID)
 	for _, td := range tools {

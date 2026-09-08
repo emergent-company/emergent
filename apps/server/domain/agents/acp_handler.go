@@ -45,22 +45,6 @@ func acpProjectID(c echo.Context) (string, error) {
 	return user.ProjectID, nil
 }
 
-// acpBaseURL returns the scheme+host base URL for the current request,
-// used to build absolute history URLs in ACP session responses.
-func acpBaseURL(c echo.Context) string {
-	req := c.Request()
-	scheme := "https"
-	if req.TLS == nil {
-		// Check X-Forwarded-Proto (set by reverse proxy / Traefik)
-		if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else {
-			scheme = "http"
-		}
-	}
-	return scheme + "://" + req.Host
-}
-
 // acpOrgID resolves the org ID for the project, used for executor requests.
 func (h *ACPHandler) acpOrgID(ctx context.Context, c echo.Context, projectID string) string {
 	user := auth.GetUser(c)
