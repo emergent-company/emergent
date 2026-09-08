@@ -23,8 +23,8 @@ func newApplyService(t *testing.T, db *bun.DB) *Service {
 	t.Helper()
 	repo := NewRepository(db, testLogger())
 	skillsRepo := skills.NewRepository(db, testLogger())
-	svc := NewService(repo, nil, nil, skillsRepo, nil, testLogger())
-	svc.SetAgentRepo(agents.NewRepository(db))
+	svc := NewService(ServiceParams{Repo: repo, SkillsRepo: skillsRepo, Log: testLogger()})
+	svc.agentRepo = agents.NewRepository(db)
 	return svc
 }
 

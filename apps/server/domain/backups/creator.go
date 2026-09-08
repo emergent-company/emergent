@@ -9,13 +9,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/emergent-company/emergent.memory/internal/storage"
 	"github.com/uptrace/bun"
 )
 
-// Creator handles creating backup archives
+// Creator handles creating backup archives.
+//
+// This package implements the backup exporter + creator lane; the importer and
+// restorer live in importer.go and restorer.go.
 type Creator struct {
 	db       *bun.DB
 	storage  *storage.Service
@@ -24,7 +28,7 @@ type Creator struct {
 	log      *slog.Logger
 }
 
-// NewCreator creates a new backup creator
+// NewCreator creates a new backup creator.
 func NewCreator(
 	db *bun.DB,
 	storage *storage.Service,
@@ -40,17 +44,24 @@ func NewCreator(
 	}
 }
 
-// CreateBackupOptions contains options for creating a backup
+// CreateBackupOptions contains options for creating a backup.
 type CreateBackupOptions struct {
 	BackupID       string
 	ProjectID      string
 	ProjectName    string
 	OrganizationID string
 	IncludeChat    bool
+	IncludeJournal bool
 	IncludeDeleted bool
 }
 
-// CreateBackup creates a full backup and uploads it to MinIO
+// zipCreationResult carries the ZIP artifact outcome from the worker goroutine.
+type zipCreationResult struct {
+	checksums Checksums
+	err       error
+}
+
+// CreateBackup creates a full backup and uploads it to MinIO.
 func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) error {
 	c.log.Info("starting backup creation",
 		slog.String("backup_id", opts.BackupID),
@@ -61,13 +72,13 @@ func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) er
 	pr, pw := io.Pipe()
 
 	// Track errors from goroutine
-	errChan := make(chan error, 1)
+	errChan := make(chan zipCreationResult, 1)
 
 	// Start ZIP creation in goroutine
 	go func() {
 		defer pw.Close()
-		err := c.createZIPArchive(ctx, pw, opts)
-		errChan <- err
+		checksums, err := c.createZIPArchive(ctx, pw, opts)
+		errChan <- zipCreationResult{checksums: checksums, err: err}
 	}()
 
 	// Upload to MinIO while ZIP is being created
@@ -95,11 +106,11 @@ func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) er
 	}
 
 	// Wait for ZIP creation to complete
-	zipErr := <-errChan
-	if zipErr != nil {
+	zipRes := <-errChan
+	if zipRes.err != nil {
 		// Clean up uploaded file
 		_ = c.storage.Delete(ctx, storageKey)
-		return fmt.Errorf("create ZIP: %w", zipErr)
+		return fmt.Errorf("create ZIP: %w", zipRes.err)
 	}
 
 	c.log.Info("backup uploaded successfully",
@@ -107,7 +118,7 @@ func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) er
 		slog.Int64("size_bytes", result.Size),
 	)
 
-	// Update backup record with final size
+	// Update backup record with final size, checksums, and status
 	backup, err := c.repo.GetByID(ctx, opts.OrganizationID, opts.BackupID)
 	if err != nil {
 		return fmt.Errorf("get backup: %w", err)
@@ -119,6 +130,8 @@ func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) er
 	backup.SizeBytes = result.Size
 	backup.Status = BackupStatusReady
 	backup.Progress = 100
+	backup.ManifestChecksum = &zipRes.checksums.Manifest
+	backup.ContentChecksum = &zipRes.checksums.Database
 	now := time.Now()
 	backup.CompletedAt = &now
 
@@ -129,52 +142,62 @@ func (c *Creator) CreateBackup(ctx context.Context, opts CreateBackupOptions) er
 	return nil
 }
 
-// createZIPArchive creates the ZIP archive structure
-func (c *Creator) createZIPArchive(ctx context.Context, w io.Writer, opts CreateBackupOptions) error {
+// createZIPArchive creates the ZIP archive structure and returns the checksums
+// recorded in the manifest so they can be persisted on the backup record.
+func (c *Creator) createZIPArchive(ctx context.Context, w io.Writer, opts CreateBackupOptions) (Checksums, error) {
 	zipWriter := zip.NewWriter(w)
 	defer zipWriter.Close()
 
 	exportOpts := ExportOptions{
 		ProjectID:      opts.ProjectID,
 		IncludeChat:    opts.IncludeChat,
+		IncludeJournal: opts.IncludeJournal,
 		IncludeDeleted: opts.IncludeDeleted,
 	}
 
 	// 1. Export project configuration
 	if err := c.exportProjectConfig(ctx, zipWriter, opts.ProjectID); err != nil {
-		return fmt.Errorf("export project config: %w", err)
+		return Checksums{}, fmt.Errorf("export project config: %w", err)
 	}
 
-	// 2. Export database tables as NDJSON
-	stats, err := c.exportDatabaseTables(ctx, zipWriter, exportOpts)
+	// 2. Export database tables as NDJSON (checksum covers the concatenated NDJSON bytes)
+	dbHash := sha256.New()
+	stats, err := c.exportDatabaseTables(ctx, zipWriter, exportOpts, dbHash)
 	if err != nil {
-		return fmt.Errorf("export database: %w", err)
+		return Checksums{}, err
 	}
 
-	// 3. Export files from MinIO
-	fileCount, totalSize, err := c.exportFiles(ctx, zipWriter, opts.ProjectID)
+	// 3. Export files from MinIO (checksum covers the concatenated file payloads)
+	filesHash := sha256.New()
+	files, totalSize, err := c.exportFiles(ctx, zipWriter, opts.ProjectID, filesHash)
 	if err != nil {
-		return fmt.Errorf("export files: %w", err)
+		return Checksums{}, fmt.Errorf("export files: %w", err)
 	}
-
-	stats.Files = fileCount
+	stats.Files = len(files)
 	stats.TotalSizeBytes = totalSize
 
-	// 4. Create manifest
-	if err := c.createManifest(ctx, zipWriter, opts, stats); err != nil {
-		return fmt.Errorf("create manifest: %w", err)
+	// 4. Create manifest (self-checksum computed over the marshaled manifest)
+	dbChecksum := hex.EncodeToString(dbHash.Sum(nil))
+	filesChecksum := hex.EncodeToString(filesHash.Sum(nil))
+	manifestChecksum, err := c.createManifest(ctx, zipWriter, opts, stats, files, dbChecksum, filesChecksum)
+	if err != nil {
+		return Checksums{}, err
 	}
 
 	c.log.Info("ZIP archive created",
 		slog.String("backup_id", opts.BackupID),
 		slog.Int("documents", stats.Documents),
-		slog.Int("files", fileCount),
+		slog.Int("files", len(files)),
 	)
 
-	return nil
+	return Checksums{
+		Manifest: manifestChecksum,
+		Database: dbChecksum,
+		Files:    filesChecksum,
+	}, nil
 }
 
-// exportProjectConfig exports project configuration to project/config.json
+// exportProjectConfig exports project configuration to project/config.json.
 func (c *Creator) exportProjectConfig(ctx context.Context, zipWriter *zip.Writer, projectID string) error {
 	// Query project
 	var project map[string]any
@@ -203,75 +226,116 @@ func (c *Creator) exportProjectConfig(ctx context.Context, zipWriter *zip.Writer
 	return nil
 }
 
-// exportDatabaseTables exports all database tables as NDJSON
-func (c *Creator) exportDatabaseTables(ctx context.Context, zipWriter *zip.Writer, opts ExportOptions) (*BackupStats, error) {
-	// Create writers for each table
-	writers := make(map[string]io.Writer)
+// exportDatabaseTables exports all enabled database tables as NDJSON,
+// streaming every table's bytes through dbHash for the database checksum.
+//
+// archive/zip flushes (closes) the PREVIOUS entry every time Create() is
+// called, so each table's zip entry must be created and fully written BEFORE
+// the next entry is created. A write to a previously created entry fails with
+// "zip: write to closed file".
+func (c *Creator) exportDatabaseTables(ctx context.Context, zipWriter *zip.Writer, opts ExportOptions, dbHash io.Writer) (*BackupStats, error) {
+	stats := &BackupStats{}
 
-	tables := []string{
-		"documents",
-		"chunks",
-		"graph_objects",
-		"graph_relationships",
-		"chat_conversations",
-		"chat_messages",
-		"extraction_jobs",
-		"project_memberships",
-	}
-
-	for _, table := range tables {
-		f, err := zipWriter.Create(fmt.Sprintf("database/%s.ndjson", table))
+	for _, cfg := range enabledExportTables(opts) {
+		// Step 1: open this table's zip entry.
+		f, err := zipWriter.Create(fmt.Sprintf("database/%s.ndjson", cfg.name))
 		if err != nil {
-			return nil, fmt.Errorf("create %s file: %w", table, err)
+			return stats, fmt.Errorf("create %s file: %w", cfg.name, err)
 		}
-		writers[table] = f
+
+		// Step 2: export the table immediately (derived branch_lineage has no
+		// backing table query).
+		w := io.MultiWriter(f, dbHash)
+		if cfg.derived {
+			count, exportErr := c.exporter.exportBranchLineage(ctx, w, opts.ProjectID)
+			if exportErr != nil {
+				return stats, exportErr
+			}
+			setTableStat(stats, cfg.name, count)
+			continue
+		}
+		count, exportErr := c.exporter.exportTable(ctx, cfg, w, opts)
+		if exportErr != nil {
+			return stats, exportErr
+		}
+		setTableStat(stats, cfg.name, count)
 	}
 
-	// Export all tables
-	result, err := c.exporter.ExportAll(ctx, writers, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	return &BackupStats{
-		Documents:          result.Documents,
-		Chunks:             result.Chunks,
-		GraphObjects:       result.GraphObjects,
-		GraphRelationships: result.GraphRelationships,
-		ChatConversations:  result.ChatConversations,
-		ChatMessages:       result.ChatMessages,
-		ExtractionJobs:     result.ExtractionJobs,
-		ProjectMemberships: result.ProjectMemberships,
-	}, nil
+	return stats, nil
 }
 
-// exportFiles exports files from MinIO to the ZIP archive
-func (c *Creator) exportFiles(ctx context.Context, zipWriter *zip.Writer, projectID string) (int, int64, error) {
-	// Query all documents with storage keys
-	var documents []struct {
-		ID         string  `bun:"id"`
-		Filename   *string `bun:"filename"`
-		StorageKey *string `bun:"storage_key"`
-		MimeType   *string `bun:"mime_type"`
+// setTableStat records a table's row count on the manifest BackupStats.
+// Only the original eight tables are surfaced in the manifest contents.
+func setTableStat(stats *BackupStats, table string, count int) {
+	switch table {
+	case "documents":
+		stats.Documents = count
+	case "chunks":
+		stats.Chunks = count
+	case "graph_objects":
+		stats.GraphObjects = count
+	case "graph_relationships":
+		stats.GraphRelationships = count
+	case "chat_conversations":
+		stats.ChatConversations = count
+	case "chat_messages":
+		stats.ChatMessages = count
+	case "object_extraction_jobs":
+		stats.ExtractionJobs = count
+	case "project_memberships":
+		stats.ProjectMemberships = count
 	}
+}
 
-	err := c.db.NewSelect().
+// fileDoc is the minimal kb.documents shape needed to export raw files.
+type fileDoc struct {
+	ID         string  `bun:"id"`
+	Filename   *string `bun:"filename"`
+	StorageKey *string `bun:"storage_key"`
+	MimeType   *string `bun:"mime_type"`
+}
+
+// exportFiles exports files from MinIO to the ZIP archive. ZIP entries are
+// keyed by the path-sanitized storage_key (never filename), and the returned
+// map records storage_key → {filename, mime_type} for the manifest. Each
+// payload is streamed through filesHash for the files checksum.
+func (c *Creator) exportFiles(ctx context.Context, zipWriter *zip.Writer, projectID string, filesHash io.Writer) (map[string]FileEntry, int64, error) {
+	query := c.db.NewSelect().
 		Table("kb.documents").
 		Column("id", "filename", "storage_key", "mime_type").
 		Where("project_id = ?", projectID).
-		Where("storage_key IS NOT NULL").
-		Where("deleted_at IS NULL").
-		Scan(ctx, &documents)
+		Where("storage_key IS NOT NULL")
 
-	if err != nil {
-		return 0, 0, fmt.Errorf("query documents: %w", err)
+	// Only documents without soft-delete tombstones are exported. Guard on the
+	// live schema because kb.documents does not carry deleted_at everywhere.
+	cols, err := c.exporter.tableColumns(ctx, "kb", "documents")
+	if err == nil {
+		for _, col := range cols {
+			if col.Name == "deleted_at" {
+				query = query.Where("deleted_at IS NULL")
+				break
+			}
+		}
+	} else {
+		c.log.Warn("failed to resolve kb.documents columns, skipping deleted_at filter",
+			slog.Any("error", err))
 	}
 
+	var documents []fileDoc
+	if err := query.Scan(ctx, &documents); err != nil {
+		return nil, 0, fmt.Errorf("query documents: %w", err)
+	}
+
+	files := make(map[string]FileEntry)
+	usedZipPaths := make(map[string]bool)
 	var totalSize int64
-	count := 0
 
 	for _, doc := range documents {
 		if doc.StorageKey == nil {
+			continue
+		}
+		// A storage_key may be shared by several document rows; export it once.
+		if _, seen := files[*doc.StorageKey]; seen {
 			continue
 		}
 
@@ -286,21 +350,17 @@ func (c *Creator) exportFiles(ctx context.Context, zipWriter *zip.Writer, projec
 			continue
 		}
 
-		// Create file in ZIP
-		filename := "unnamed"
-		if doc.Filename != nil {
-			filename = *doc.Filename
-		}
-
-		zipPath := fmt.Sprintf("files/%s", filename)
+		// ZIP entries are keyed by path-sanitized storage_key, deduped against
+		// accidental sanitize collisions so no file overwrites another.
+		zipPath := "files/" + uniqueZipPath(*doc.StorageKey, usedZipPaths)
 		f, err := zipWriter.Create(zipPath)
 		if err != nil {
 			reader.Close()
-			return count, totalSize, fmt.Errorf("create file in zip: %w", err)
+			return files, totalSize, fmt.Errorf("create file in zip: %w", err)
 		}
 
-		// Stream file into ZIP
-		size, err := io.Copy(f, reader)
+		// Stream file into ZIP while feeding the files checksum.
+		size, err := io.Copy(io.MultiWriter(f, filesHash), reader)
 		reader.Close()
 
 		if err != nil {
@@ -311,30 +371,82 @@ func (c *Creator) exportFiles(ctx context.Context, zipWriter *zip.Writer, projec
 			continue
 		}
 
+		filename := "unnamed"
+		if doc.Filename != nil {
+			filename = *doc.Filename
+		}
+		files[*doc.StorageKey] = FileEntry{
+			Filename: filename,
+			MimeType: doc.MimeType,
+		}
 		totalSize += size
-		count++
 
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
-			return count, totalSize, ctx.Err()
+			return files, totalSize, ctx.Err()
 		default:
 		}
 	}
 
 	c.log.Debug("files exported",
-		slog.Int("count", count),
+		slog.Int("count", len(files)),
 		slog.Int64("total_bytes", totalSize),
 	)
 
-	return count, totalSize, nil
+	return files, totalSize, nil
 }
 
-// createManifest creates the manifest.json file
-func (c *Creator) createManifest(ctx context.Context, zipWriter *zip.Writer, opts CreateBackupOptions, stats *BackupStats) error {
+// sanitizeFileKey renders a storage_key as a safe ZIP path segment by
+// replacing '/' and any other unsafe characters with '_'.
+func sanitizeFileKey(key string) string {
+	var b strings.Builder
+	b.Grow(len(key))
+	for _, r := range key {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
+// uniqueZipPath returns a sanitized path segment that has not been used yet,
+// appending a short keyed suffix on collision.
+func uniqueZipPath(storageKey string, used map[string]bool) string {
+	base := sanitizeFileKey(storageKey)
+	if base == "" {
+		base = "file"
+	}
+	if !used[base] {
+		used[base] = true
+		return base
+	}
+	sum := sha256.Sum256([]byte(storageKey))
+	suffix := hex.EncodeToString(sum[:4])
+	candidate := fmt.Sprintf("%s-%s", base, suffix)
+	for used[candidate] {
+		sum = sha256.Sum256([]byte(candidate))
+		suffix = hex.EncodeToString(sum[:4])
+		candidate = fmt.Sprintf("%s-%s", base, suffix)
+	}
+	used[candidate] = true
+	return candidate
+}
+
+// createManifest creates manifest.json and returns the manifest checksum.
+//
+// Checksum contract (the importer MUST reproduce it): manifest.checksums
+// holds sha256 over the concatenated database/*.ndjson bytes
+// (Checksums.Database), the concatenated files/* payloads (Checksums.Files),
+// and the compact-JSON marshaling of the manifest with Checksums.Manifest
+// cleared (Checksums.Manifest).
+func (c *Creator) createManifest(ctx context.Context, zipWriter *zip.Writer, opts CreateBackupOptions, stats *BackupStats, files map[string]FileEntry, dbChecksum, filesChecksum string) (string, error) {
 	manifest := Manifest{
 		Version:       "1.0.0",
-		SchemaVersion: "20260211_000000", // Today's date
+		SchemaVersion: "20260211_000000",
 		CreatedAt:     time.Now(),
 		BackupType:    BackupTypeFull,
 		Project: ProjectInfo{
@@ -343,39 +455,48 @@ func (c *Creator) createManifest(ctx context.Context, zipWriter *zip.Writer, opt
 			OrganizationID: opts.OrganizationID,
 		},
 		Contents: *stats,
+		Files:    files,
 		Checksums: Checksums{
-			// TODO: Calculate actual checksums
 			Manifest: "",
-			Database: "",
-			Files:    "",
+			Database: dbChecksum,
+			Files:    filesChecksum,
 		},
 		Metadata: map[string]any{
-			"server_version": "2.0.0",
-			"go_version":     "1.24",
+			"server_version":  "2.0.0",
+			"go_version":      "1.24",
+			"include_chat":    opts.IncludeChat,
+			"include_journal": opts.IncludeJournal,
 		},
 	}
+
+	// Manifest checksum: sha256 over the marshaled manifest with the manifest
+	// checksum field itself cleared, so the value is not self-referential.
+	payload := manifest
+	payload.Checksums.Manifest = ""
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal manifest for checksum: %w", err)
+	}
+	hash := sha256.Sum256(payloadBytes)
+	manifestChecksum := hex.EncodeToString(hash[:])
+	manifest.Checksums.Manifest = manifestChecksum
 
 	// Create manifest file
 	f, err := zipWriter.Create("manifest.json")
 	if err != nil {
-		return fmt.Errorf("create manifest file: %w", err)
+		return "", fmt.Errorf("create manifest file: %w", err)
 	}
 
 	// Write JSON
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(manifest); err != nil {
-		return fmt.Errorf("encode manifest: %w", err)
+		return "", fmt.Errorf("encode manifest: %w", err)
 	}
 
-	// Calculate manifest checksum
-	manifestJSON, _ := json.Marshal(manifest)
-	hash := sha256.Sum256(manifestJSON)
-	checksumHex := hex.EncodeToString(hash[:])
-
 	c.log.Debug("manifest created",
-		slog.String("checksum", checksumHex),
+		slog.String("checksum", manifestChecksum),
 	)
 
-	return nil
+	return manifestChecksum, nil
 }

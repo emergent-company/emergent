@@ -133,11 +133,6 @@ func (h *Handler) Health(c echo.Context) error {
 
 // runChecks executes all health checks concurrently and returns the results.
 func (h *Handler) runChecks(ctx context.Context) map[string]Check {
-	type result struct {
-		name  string
-		check Check
-	}
-
 	var (
 		mu      sync.Mutex
 		wg      sync.WaitGroup

@@ -15,7 +15,8 @@ import (
 
 const (
 	// modelLimitsSyncSchedule runs the sync daily at 03:00 UTC.
-	modelLimitsSyncSchedule = "0 3 * * *"
+	// Scheduler uses seconds-precision (6-field) cron: "second minute hour dom month dow".
+	modelLimitsSyncSchedule = "0 0 3 * * *"
 
 	// modelLimitsFetchURL is the models.dev canonical API endpoint.
 	modelLimitsFetchURL = "https://models.dev/api.json"

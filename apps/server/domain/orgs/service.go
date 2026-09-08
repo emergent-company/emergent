@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"go.uber.org/fx"
+
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
@@ -23,18 +25,24 @@ type Service struct {
 	toolPoolInvalidator ToolPoolInvalidator
 }
 
-// NewService creates a new organization service
-func NewService(repo *Repository, log *slog.Logger) *Service {
-	return &Service{
-		repo: repo,
-		log:  log.With(logger.Scope("orgs.svc")),
-	}
+// ServiceParams bundles dependencies for NewService.
+type ServiceParams struct {
+	fx.In
+
+	Repo *Repository
+	Log  *slog.Logger
+
+	// Optional cross-domain dependency (nil-safe when the agents feature is off).
+	ToolPoolInvalidator ToolPoolInvalidator `optional:"true"`
 }
 
-// SetToolPoolInvalidator sets the callback used to invalidate the ToolPool cache
-// when org-level tool settings change. Called from fx wiring after both services are created.
-func (s *Service) SetToolPoolInvalidator(inv ToolPoolInvalidator) {
-	s.toolPoolInvalidator = inv
+// NewService creates a new organization service
+func NewService(p ServiceParams) *Service {
+	return &Service{
+		repo:                p.Repo,
+		log:                 p.Log.With(logger.Scope("orgs.svc")),
+		toolPoolInvalidator: p.ToolPoolInvalidator,
+	}
 }
 
 // List returns all organizations the user is a member of

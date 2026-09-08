@@ -38,32 +38,33 @@ func NewModelCatalogService(repo *Repository, log *slog.Logger) *ModelCatalogSer
 // If the API call fails (timeout or non-auth error), it falls back to a
 // static known-good model list.
 func (s *ModelCatalogService) SyncModels(ctx context.Context, provider ProviderType, cred *ResolvedCredential) error {
-	// OpenAI-compatible: no model catalog API — store the user-supplied model name directly.
-	// Attempt to query /v1/models for context_length; fall back to safe defaults on failure.
-	if provider == ProviderOpenAI {
-		if cred.GenerativeModel == "" {
-			return fmt.Errorf("openai-compatible provider requires a model name")
+	var models []ProviderSupportedModel
+
+	switch provider {
+	case ProviderOpenAI:
+		// OpenAI-compatible (incl. LiteLLM proxies): list the full model set
+		// exposed by GET {base_url}/models. Fall back to the configured model(s)
+		// when the proxy's model list is unreachable, so the user's selection is
+		// never lost.
+		fetched, err := s.fetchOpenAICompatibleModels(ctx, cred)
+		if err != nil {
+			s.log.Warn("openai-compatible: /v1/models fetch failed, storing configured models only", logger.Error(err))
+			fetched = s.configuredOpenAIModels(cred)
 		}
-		inputLimit, outputLimit := s.queryOpenAICompatibleLimits(ctx, cred)
-		models := []ProviderSupportedModel{{
-			Provider:        provider,
-			ModelName:       cred.GenerativeModel,
-			ModelType:       ModelTypeGenerative,
-			DisplayName:     cred.GenerativeModel,
-			MaxInputTokens:  &inputLimit,
-			MaxOutputTokens: &outputLimit,
-		}}
-		return s.repo.UpsertSupportedModels(ctx, models)
-	}
+		models = fetched
 
-	// DeepSeek: use static model list (no catalog API).
-	if provider == ProviderDeepSeek {
-		return s.repo.UpsertSupportedModels(ctx, staticModels(provider))
-	}
+	case ProviderDeepSeek:
+		// DeepSeek: use static model list (no live catalog fetch — the fixed
+		// endpoint lists only deepseek-chat/deepseek-reasoner and would prune
+		// the alfred-specific aliases).
+		models = staticModels(provider)
 
-	models, err := s.fetchModelsFromAPI(ctx, provider, cred)
-	if err != nil {
-		return fmt.Errorf("failed to fetch model catalog from %s API: %w", provider, err)
+	default:
+		fetched, err := s.fetchModelsFromAPI(ctx, provider, cred)
+		if err != nil {
+			return fmt.Errorf("failed to fetch model catalog from %s API: %w", provider, err)
+		}
+		models = fetched
 	}
 
 	if len(models) == 0 {
@@ -153,6 +154,130 @@ func (s *ModelCatalogService) fetchModelsFromAPI(ctx context.Context, provider P
 	}
 
 	return models, nil
+}
+
+// fetchOpenAICompatibleModels lists every model exposed by an OpenAI-compatible
+// endpoint (including LiteLLM proxies) via GET {base_url}/models. Each entry is
+// classified generative/embedding by name heuristic and carries context-window
+// limits when the server advertises them (llama.cpp context_length or vLLM
+// max_model_len). The configured generative + embedding models are always
+// appended (deduped), so the catalog never loses the user's selected models.
+func (s *ModelCatalogService) fetchOpenAICompatibleModels(ctx context.Context, cred *ResolvedCredential) ([]ProviderSupportedModel, error) {
+	if cred.BaseURL == "" {
+		return nil, fmt.Errorf("openai-compatible provider requires base_url")
+	}
+
+	fetchCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	url := strings.TrimSuffix(cred.BaseURL, "/") + "/models"
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build /v1/models request: %w", err)
+	}
+	if cred.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cred.APIKey)
+	}
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("/v1/models request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("/v1/models returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var body struct {
+		Data []struct {
+			ID            string `json:"id"`
+			ContextLength int    `json:"context_length"` // llama.cpp field
+			MaxModelLen   int    `json:"max_model_len"`  // vLLM field
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("failed to decode /v1/models response: %w", err)
+	}
+
+	models := make([]ProviderSupportedModel, 0, len(body.Data)+2)
+	seen := map[string]bool{}
+	add := func(name string, mt ModelType, ctxLen int) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		in, out := openAICompatibleDefaultInputTokens, openAICompatibleDefaultOutputTokens
+		if ctxLen > 0 {
+			in = ctxLen
+			out = max(openAICompatibleDefaultOutputTokens, ctxLen/2)
+		}
+		models = append(models, ProviderSupportedModel{
+			ModelName:       name,
+			ModelType:       mt,
+			DisplayName:     displayNameForOpenAICompatible(name),
+			MaxInputTokens:  &in,
+			MaxOutputTokens: &out,
+		})
+	}
+
+	for _, m := range body.Data {
+		mt := ModelTypeGenerative
+		if nameLooksEmbedding(m.ID) {
+			mt = ModelTypeEmbedding
+		}
+		ctxLen := m.ContextLength
+		if ctxLen == 0 {
+			ctxLen = m.MaxModelLen
+		}
+		add(m.ID, mt, ctxLen)
+	}
+
+	// Ensure the configured models are present even if the proxy omits them.
+	add(cred.GenerativeModel, ModelTypeGenerative, 0)
+	add(cred.EmbeddingModel, ModelTypeEmbedding, 0)
+
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models returned by /v1/models")
+	}
+
+	s.log.Info("openai-compatible: fetched model catalog",
+		slog.Int("models", len(models)),
+	)
+	return models, nil
+}
+
+// configuredOpenAIModels builds a fallback catalog from the explicitly
+// configured generative/embedding models (used when the /v1/models list is
+// unreachable). It dedupes by model name.
+func (s *ModelCatalogService) configuredOpenAIModels(cred *ResolvedCredential) []ProviderSupportedModel {
+	var models []ProviderSupportedModel
+	seen := map[string]bool{}
+	add := func(name string, mt ModelType) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		models = append(models, ProviderSupportedModel{
+			ModelName:   name,
+			ModelType:   mt,
+			DisplayName: displayNameForOpenAICompatible(name),
+		})
+	}
+	add(cred.GenerativeModel, ModelTypeGenerative)
+	add(cred.EmbeddingModel, ModelTypeEmbedding)
+	return models
+}
+
+// displayNameForOpenAICompatible strips a LiteLLM "vendor/model" prefix for a
+// friendlier display name while keeping the full ID as the stored model name.
+func displayNameForOpenAICompatible(name string) string {
+	if i := strings.Index(name, "/"); i != -1 {
+		return name[i+1:]
+	}
+	return name
 }
 
 // classifyModel determines if a genai.Model is an embedding or generative model.
@@ -588,91 +713,3 @@ const (
 	// openAICompatibleDefaultOutputTokens is a safe default max-output budget.
 	openAICompatibleDefaultOutputTokens = 8_192
 )
-
-// queryOpenAICompatibleLimits tries to discover the context window of the
-// configured model by calling GET /v1/models on the base URL. llama.cpp and
-// many other OpenAI-compatible servers include a context_length field in the
-// model object. Returns (inputTokens, outputTokens); falls back to the safe
-// defaults if the call fails or the field is absent/zero.
-func (s *ModelCatalogService) queryOpenAICompatibleLimits(ctx context.Context, cred *ResolvedCredential) (inputTokens, outputTokens int) {
-	inputTokens = openAICompatibleDefaultInputTokens
-	outputTokens = openAICompatibleDefaultOutputTokens
-
-	if cred.BaseURL == "" {
-		return
-	}
-
-	fetchCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-
-	url := strings.TrimSuffix(cred.BaseURL, "/") + "/models"
-	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, url, nil)
-	if err != nil {
-		s.log.Warn("openai-compatible: failed to build /v1/models request", logger.Error(err))
-		return
-	}
-	if cred.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cred.APIKey)
-	}
-
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		s.log.Warn("openai-compatible: /v1/models request failed, using default limits",
-			slog.Int("default_input", inputTokens),
-			slog.Int("default_output", outputTokens),
-			logger.Error(err),
-		)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		s.log.Warn("openai-compatible: /v1/models returned non-200, using default limits",
-			slog.Int("status", resp.StatusCode),
-			slog.Int("default_input", inputTokens),
-			slog.Int("default_output", outputTokens),
-		)
-		return
-	}
-
-	var body struct {
-		Data []struct {
-			ID            string `json:"id"`
-			ContextLength int    `json:"context_length"` // llama.cpp field
-			MaxModelLen   int    `json:"max_model_len"`  // vLLM field
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		s.log.Warn("openai-compatible: failed to decode /v1/models response, using default limits", logger.Error(err))
-		return
-	}
-
-	for _, m := range body.Data {
-		if m.ID != cred.GenerativeModel {
-			continue
-		}
-		ctxLen := m.ContextLength
-		if ctxLen == 0 {
-			ctxLen = m.MaxModelLen // vLLM fallback
-		}
-		if ctxLen > 0 {
-			inputTokens = ctxLen
-			// Cap output at half the context window or the default, whichever is larger.
-			outputTokens = max(openAICompatibleDefaultOutputTokens, ctxLen/2)
-			s.log.Info("openai-compatible: detected context window from /v1/models",
-				slog.String("model", cred.GenerativeModel),
-				slog.Int("input_tokens", inputTokens),
-				slog.Int("output_tokens", outputTokens),
-			)
-			return
-		}
-	}
-
-	s.log.Info("openai-compatible: model not found in /v1/models or context_length absent, using defaults",
-		slog.String("model", cred.GenerativeModel),
-		slog.Int("default_input", inputTokens),
-		slog.Int("default_output", outputTokens),
-	)
-	return
-}

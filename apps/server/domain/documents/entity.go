@@ -120,7 +120,10 @@ type DeleteSummary struct {
 	Notifications      int `json:"notifications"`
 }
 
-// UploadDocumentResponse is the response for file upload
+// UploadDocumentResponse is the response for file upload.
+// Uploads are no longer deduplicated (issue #381); IsDuplicate and
+// ExistingDocumentID are retained for backward compatibility and are always
+// false/nil.
 type UploadDocumentResponse struct {
 	Document           *DocumentSummary `json:"document"`
 	IsDuplicate        bool             `json:"isDuplicate"`
@@ -170,7 +173,7 @@ type BatchUploadSummary struct {
 // BatchUploadFileResult represents the result for a single file in a batch upload
 type BatchUploadFileResult struct {
 	Filename   string  `json:"filename"`
-	Status     string  `json:"status"` // "success", "duplicate", "failed"
+	Status     string  `json:"status"` // "success", "failed"
 	DocumentID *string `json:"documentId,omitempty"`
 	Chunks     *int    `json:"chunks,omitempty"`
 	Error      *string `json:"error,omitempty"`

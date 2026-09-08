@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk"
-	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/documents"
 	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 )
 
@@ -287,20 +286,6 @@ func apiRequest(method, url, apiKey, projectID string, body io.Reader, contentTy
 		req.Header.Set("Content-Type", contentType)
 	}
 	return http.DefaultClient.Do(req)
-}
-
-// ─── Document upload ──────────────────────────────────────────────────────────
-
-// uploadDocument uploads the synthetic document using the official SDK.
-func uploadDocument(ctx context.Context, client *sdk.Client, content string) (string, error) {
-	resp, err := client.Documents.Upload(ctx, &documents.UploadFileInput{
-		Filename: "extraction-benchmark.txt",
-		Reader:   strings.NewReader(content),
-	})
-	if err != nil {
-		return "", fmt.Errorf("upload failed: %w", err)
-	}
-	return resp.Document.ID, nil
 }
 
 // ─── Extraction job ───────────────────────────────────────────────────────────

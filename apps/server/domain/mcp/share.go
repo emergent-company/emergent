@@ -306,10 +306,7 @@ func (s *Service) enqueueMCPInviteEmail(ctx context.Context, toEmail, senderName
 // @Router       /api/projects/{projectId}/mcp/share [post]
 // @Security     bearerAuth
 func (h *Handler) HandleShareMCPAccess(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {

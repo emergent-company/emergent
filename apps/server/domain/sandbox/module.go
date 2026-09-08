@@ -92,9 +92,23 @@ func newCheckoutService(log *slog.Logger) *CheckoutService {
 	return NewCheckoutService(nil, log)
 }
 
+// autoProvisionerParams bundles dependencies for newAutoProvisioner.
+type autoProvisionerParams struct {
+	fx.In
+
+	Service       *Service
+	Orchestrator  *Orchestrator
+	CheckoutSvc   *CheckoutService
+	SetupExec     *SetupExecutor
+	WarmPool      *WarmPool
+	Cfg           *config.Config
+	Log           *slog.Logger
+	ImageResolver ImageResolver `optional:"true"`
+}
+
 // newAutoProvisioner creates the auto-provisioning service for agent sandboxes.
-func newAutoProvisioner(service *Service, orchestrator *Orchestrator, checkoutSvc *CheckoutService, setupExec *SetupExecutor, warmPool *WarmPool, cfg *config.Config, log *slog.Logger) *AutoProvisioner {
-	return NewAutoProvisioner(service, orchestrator, checkoutSvc, setupExec, warmPool, log)
+func newAutoProvisioner(p autoProvisionerParams) *AutoProvisioner {
+	return NewAutoProvisioner(p.Service, p.Orchestrator, p.CheckoutSvc, p.SetupExec, p.WarmPool, p.Log, p.ImageResolver)
 }
 
 // newCleanupJob creates a cleanup job with configuration from env vars.

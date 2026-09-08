@@ -280,11 +280,6 @@ func AgentDefinitionToManifest(def *AgentDefinition, status *AgentStatusMetrics)
 		if len(def.ACPConfig.OutputModes) > 0 {
 			manifest.DefaultOutputModes = def.ACPConfig.OutputModes
 		}
-		if len(def.ACPConfig.Capabilities) > 0 {
-			// ACPConfig.Capabilities is a string list of capability names;
-			// the manifest Capabilities struct is fixed, so store them as tags.
-			// This keeps backward compat with the existing ACPConfig shape.
-		}
 	}
 
 	// Provider defaults (can be overridden by ACPConfig in future)

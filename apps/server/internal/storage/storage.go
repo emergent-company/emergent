@@ -154,6 +154,13 @@ func NewService(cfg *Config, log *slog.Logger) (*Service, error) {
 		o.UsePathStyle = true
 		o.HTTPClient = httpClient
 		o.EndpointOptions.DisableHTTPS = !useHTTPS
+		// MinIO over plain HTTP: the SDK defaults to computing a trailing
+		// checksum for unseekable streams (unknown content length), which
+		// requires TLS. Disable auto checksum so pipe-streamed uploads
+		// (backup ZIP, pg_dump) work without TLS. Integrity is covered at the
+		// application layer (backup manifests carry SHA-256 checksums).
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 	})
 
 	// Create presign client for signed URLs
@@ -194,10 +201,42 @@ func (s *Service) Ping(ctx context.Context) error {
 	return nil
 }
 
+// spoolToTemp copies r to a temp file and rewinds it, returning the seekable
+// file and byte count. The S3 client cannot sign an unseekable/unknown-size
+// stream (io.Pipe with size -1) — it needs a seekable body to compute the
+// payload hash. Callers with unknown size (backup ZIP, pg_dump) rely on this.
+func (s *Service) spoolToTemp(r io.Reader) (f *os.File, n int64, err error) {
+	f, err = os.CreateTemp("", "storage-upload-*")
+	if err != nil {
+		return nil, 0, err
+	}
+	n, err = io.Copy(f, r)
+	if err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, 0, err
+	}
+	if _, err = f.Seek(0, io.SeekStart); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, 0, err
+	}
+	return f, n, nil
+}
+
 // Upload uploads data to the specified key in the documents bucket
 func (s *Service) Upload(ctx context.Context, key string, data io.Reader, size int64, opts UploadOptions) (*UploadResult, error) {
 	if !s.Enabled() {
 		return nil, fmt.Errorf("storage service not enabled")
+	}
+
+	if size < 0 {
+		f, n, err := s.spoolToTemp(data)
+		if err != nil {
+			return nil, fmt.Errorf("spool upload to temp: %w", err)
+		}
+		defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+		data, size = f, n
 	}
 
 	input := &s3.PutObjectInput{
@@ -451,6 +490,14 @@ func (s *Service) EnsureBucket(ctx context.Context, bucket string) error {
 func (s *Service) UploadToBucket(ctx context.Context, bucket, key string, data io.Reader, size int64, opts UploadOptions) (*UploadResult, error) {
 	if !s.Enabled() {
 		return nil, fmt.Errorf("storage service not enabled")
+	}
+	if size < 0 {
+		f, n, err := s.spoolToTemp(data)
+		if err != nil {
+			return nil, fmt.Errorf("spool upload to temp: %w", err)
+		}
+		defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+		data, size = f, n
 	}
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(bucket),

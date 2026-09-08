@@ -1,19 +1,21 @@
 ## Why
 
-The Go server has accumulated 289 copy-pasted auth guard blocks, 4 duplicate generic response types, 9 setter-injection anti-patterns, and zero infrastructure for feature toggling — making the codebase hard to maintain and making a "lite" build (stripped of AI orchestration features) structurally impossible today. Addressing this now unlocks both a cleaner codebase and a viable path to shipping a lightweight deployment target.
+The Go server (49 domains, 400 files, ~160k LOC) carries cross-cutting technical debt that has **grown** since this audit was first scoped: 312 inline auth guards (was 289), 1168 `apperror` Style-A chains (was 664), and 21 cross-domain `SetXxx` setters (was 9). Half the original remediation has shipped (httputil, graph/journal decoupling, FeatureSet), but the helpers are defined yet **never applied** — `RequireProject()` wires 0 routes, and the `.golangci.yml` blanket-disables three linters, so nothing stops the debt from growing. Addressing this now unlocks a cleaner codebase and a lightweight deployment target.
 
 ## What Changes
 
-- Introduce `pkg/httputil` package consolidating `APIResponse[T]`, `PaginatedResponse[T]`, and `SuccessResponse[T]` — currently defined in 4 separate domains
-- Add `auth.GetProjectUUID(c)` helper to `pkg/auth` and remove 3 copy-pasted local `getProjectID()` functions
-- Introduce `RequireProject()` middleware variant in `pkg/auth` to replace 289 inline user-nil-check + 40 project-ID-check boilerplate blocks across handlers
-- Standardize on `apperror` Style B (`apperror.NewBadRequest/NewInternal/NewNotFound`) — migrate 664 Style A usages
-- Extract `RegisterWorkerLifecycle[W Worker](lc, w)` generic helper in `apps/server/domain/extraction` to collapse 6 near-identical `fx.Lifecycle` hook blocks
-- Replace 7 of 9 setter-injection (`SetXxx()`) wiring points with explicit named interfaces defined in the receiving package
-- Decouple `graph.Service` from direct `*journal.Service` embed via a `GraphEventSink` interface
-- Add `FeatureSet` config struct with env-var flags controlling conditional `fx.Options` in `main.go`
-- Gate `devtools`, `monitoring`, `tracing`, `backups` behind build-tag or config-driven module inclusion to stop compiling debug code into production binaries
-- Audit and remove `domain/chat` + `pkg/llm/vertex` if confirmed dead (no active UI callers)
+- Introduce `pkg/httputil` package consolidating `APIResponse[T]`, `PaginatedResponse[T]`, and `SuccessResponse[T]` — **done**; finish residue (4 domain type aliases, `superadmin.SuccessResponse`, `pkg/sdk` copies)
+- Add `auth.GetProjectUUID(c)` helper to `pkg/auth` and remove 3 copy-pasted local `getProjectID()` functions — **helper done**, 3 local copies remain
+- Introduce `RequireProject()` middleware variant in `pkg/auth` to replace 312 inline user-nil-check blocks — **helper done, 0 routes migrated**
+- Standardize on `apperror` Style B (`apperror.NewBadRequest/NewInternal/NewNotFound`) — migrate 1168 Style A usages
+- Extract `RegisterWorkerLifecycle[W Worker](lc, w)` helper in `apps/server/domain/extraction` to collapse 3 remaining `fx.Lifecycle` hook blocks (was 6)
+- Replace 21 setter-injection (`SetXxx()`) wiring points with explicit named interfaces defined in the receiving package
+- Decouple `graph.Service` from direct `*journal.Service` embed via a `GraphEventSink` interface — **done** (`EventSink` + `GraphEventSinkAdapter`)
+- Add `FeatureSet` config struct with env-var flags controlling conditional `fx.Options` in `main.go` — **done**
+- Gate optional domains behind config-driven module inclusion to stop compiling debug code into production binaries — **done**
+- **NEW** Add a prevention layer (L3): un-mask the linter and add CI gates that fail on re-introduction of these four patterns
+
+> Removed from scope: deleting `domain/chat` / `pkg/llm/vertex` — both confirmed **live** (chat wired in `main.go`, `pkg/sdk/chat` client, `cmd/swiftbridge`; extraction depends on `vertex`). Keep feature-flagged.
 
 ## Capabilities
 
@@ -25,6 +27,7 @@ The Go server has accumulated 289 copy-pasted auth guard blocks, 4 duplicate gen
 - `graph-journal-decoupling`: `GraphEventSink` interface decoupling `graph.Service` from direct `*journal.Service` dependency
 - `worker-lifecycle-helper`: Generic `RegisterWorkerLifecycle` helper reducing extraction worker module boilerplate
 - `feature-flag-infrastructure`: `FeatureSet` config struct + conditional `fx.Options` pattern in `main.go` enabling runtime feature toggling per deployment
+- `lint-prevention-gates`: CI rules failing on re-introduction of the four duplication patterns (auth guards, setters, duplicate response types, Style-A apperror)
 
 ### Modified Capabilities
 
@@ -50,7 +53,10 @@ All ~30 domains that currently repeat the 3-line auth guard block
 **Domains decoupled:**
 `domain/graph` (from `domain/journal`)
 
-**Domains potentially removed:**
-`domain/chat`, `pkg/llm/vertex` (pending audit confirmation)
+**Domains kept feature-flagged (not removed):**
+`domain/chat`, `pkg/llm/vertex` (both confirmed live)
+
+**New enforcement:**
+`apps/server/.golangci.yml` — un-mask linters + custom duplication gates
 
 **No breaking changes to external APIs, CLI, or database schema.**

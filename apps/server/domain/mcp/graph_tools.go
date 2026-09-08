@@ -268,6 +268,7 @@ func (s *Service) mapUnifiedToSearchResponse(res *search.UnifiedSearchResponse, 
 					Type:        r.ObjectType,
 					Key:         key,
 					Properties:  r.Fields,
+					Labels:      r.Labels,
 				},
 				Score: r.Score,
 			})

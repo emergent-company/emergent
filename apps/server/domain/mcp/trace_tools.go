@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -181,24 +180,4 @@ func (s *Service) tempoGet(ctx context.Context, url string) (io.ReadCloser, erro
 	}
 
 	return resp.Body, nil
-}
-
-// tempoGetSSE is a variant of tempoGet that reads SSE lines (used for streaming queries).
-// Returns lines as a slice of data payloads.
-func (s *Service) tempoGetSSE(ctx context.Context, url string) ([]string, bool, error) {
-	body, err := s.tempoGet(ctx, url)
-	if err != nil {
-		return nil, false, err
-	}
-	defer body.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "data:") {
-			lines = append(lines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-		}
-	}
-	return lines, false, scanner.Err()
 }

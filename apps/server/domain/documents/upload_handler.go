@@ -119,10 +119,7 @@ func (h *UploadHandler) WithAllowedMIMETypes(csv string) *UploadHandler {
 
 // Upload handles POST /api/documents/upload (multipart file upload).
 func (h *UploadHandler) Upload(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
 	}
@@ -197,24 +194,15 @@ func (h *UploadHandler) Upload(c echo.Context) error {
 		return err
 	}
 
-	status := http.StatusCreated
-	if response.IsDuplicate {
-		status = http.StatusOK
-		h.deleteStorageObject(c.Request().Context(), uploadResult.Key)
-	} else {
-		h.createParsingJob(c.Request().Context(), user.OrgID, user.ProjectID, response.Document.ID, file.Filename, mimeType, n, uploadResult.Key, autoExtract)
-	}
+	h.createParsingJob(c.Request().Context(), user.OrgID, user.ProjectID, response.Document.ID, file.Filename, mimeType, n, uploadResult.Key, autoExtract)
 
-	return c.JSON(status, response)
+	return c.JSON(http.StatusCreated, response)
 }
 
 // UploadBatch handles POST /api/documents/upload/batch (batch multipart file upload).
 // Max 100 files per batch, each max 10 MB. Files are processed concurrently via a worker pool.
 func (h *UploadHandler) UploadBatch(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
 	}
@@ -358,15 +346,6 @@ func (h *UploadHandler) processFileUpload(ctx context.Context, user *auth.AuthUs
 		return BatchUploadFileResult{Filename: filename, Status: "failed", Error: &errMsg}
 	}
 
-	if response.IsDuplicate {
-		h.deleteStorageObject(ctx, uploadResult.Key)
-		return BatchUploadFileResult{
-			Filename:   filename,
-			Status:     "duplicate",
-			DocumentID: response.ExistingDocumentID,
-		}
-	}
-
 	h.createParsingJob(ctx, user.OrgID, user.ProjectID, response.Document.ID, filename, mimeType, n, uploadResult.Key, autoExtract)
 
 	docID := response.Document.ID
@@ -448,17 +427,6 @@ func (h *UploadHandler) UploadForRemember(ctx context.Context, orgID, projectID 
 	if err != nil {
 		h.deleteStorageObject(ctx, uploadResult.Key)
 		return nil, err
-	}
-
-	if response.IsDuplicate {
-		h.deleteStorageObject(ctx, uploadResult.Key)
-		var docID string
-		if response.ExistingDocumentID != nil {
-			docID = *response.ExistingDocumentID
-		} else if response.Document != nil {
-			docID = response.Document.ID
-		}
-		return &RememberUploadResult{DocumentID: docID, IsDuplicate: true}, nil
 	}
 
 	h.createParsingJob(ctx, orgID, projectID, response.Document.ID, filename, mimeType, n, uploadResult.Key, false)

@@ -402,13 +402,8 @@ func (p *MemorySchemaProvider) registryTypeNames(ctx context.Context, projectID,
 	return names, nil
 }
 
-// buildTypeNamesFromSchema returns the object type names defined in a schema pack.
-// Used to populate InstalledSchemaSummary.TypeNames for the LLM classification prompt.
-func buildTypeNamesFromSchema(ms *GraphMemorySchema) []string {
-	return buildTypeNamesFromParsed(ms, parseObjectTypeSchemas(ms.ObjectTypeSchemas))
-}
-
-// buildTypeNamesFromParsed is the pre-parsed variant of buildTypeNamesFromSchema.
+// buildTypeNamesFromParsed returns the object type names defined in a schema pack,
+// using a pre-parsed object type map.
 func buildTypeNamesFromParsed(ms *GraphMemorySchema, parsed map[string]agents.ObjectSchema) []string {
 	seen := map[string]bool{}
 	var names []string
@@ -430,12 +425,8 @@ func buildTypeNamesFromParsed(ms *GraphMemorySchema, parsed map[string]agents.Ob
 	return names
 }
 
-// buildKeywordsFromSchema extracts keyword signals from a schema pack's name and type list.
-func buildKeywordsFromSchema(ms *GraphMemorySchema) []string {
-	return buildKeywordsFromParsed(ms, parseObjectTypeSchemas(ms.ObjectTypeSchemas))
-}
-
-// buildKeywordsFromParsed is the pre-parsed variant of buildKeywordsFromSchema.
+// buildKeywordsFromParsed extracts keyword signals from a schema pack's name and
+// type list, using a pre-parsed object type map.
 func buildKeywordsFromParsed(ms *GraphMemorySchema, parsed map[string]agents.ObjectSchema) []string {
 	seen := map[string]bool{}
 	var kws []string
@@ -461,12 +452,8 @@ func buildKeywordsFromParsed(ms *GraphMemorySchema, parsed map[string]agents.Obj
 	return kws
 }
 
-// buildSchemaEmbeddingText builds a text representation of a schema pack for embedding.
-func buildSchemaEmbeddingText(ms *GraphMemorySchema) string {
-	return buildSchemaEmbeddingTextFromParsed(ms, parseObjectTypeSchemas(ms.ObjectTypeSchemas))
-}
-
-// buildSchemaEmbeddingTextFromParsed is the pre-parsed variant of buildSchemaEmbeddingText.
+// buildSchemaEmbeddingTextFromParsed builds a text representation of a schema pack
+// for embedding, using a pre-parsed object type map.
 func buildSchemaEmbeddingTextFromParsed(ms *GraphMemorySchema, parsed map[string]agents.ObjectSchema) string {
 	var parts []string
 	parts = append(parts, ms.Name)

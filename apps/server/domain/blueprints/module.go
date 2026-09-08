@@ -13,16 +13,10 @@ var Module = fx.Module("blueprints",
 	fx.Provide(NewHandler),
 	fx.Provide(provideMCPBlueprintToolHandler),
 	fx.Invoke(RegisterRoutes),
-	fx.Invoke(registerBlueprintToolHandler),
 )
 
-// provideMCPBlueprintToolHandler creates an MCPBlueprintToolHandler from fx dependencies.
-func provideMCPBlueprintToolHandler(svc *Service) *MCPBlueprintToolHandler {
+// provideMCPBlueprintToolHandler exposes the blueprint tool handler as
+// mcp.BlueprintToolHandler (blueprints → mcp, injected via fx to avoid a setter).
+func provideMCPBlueprintToolHandler(svc *Service) mcp.BlueprintToolHandler {
 	return NewMCPBlueprintToolHandler(svc)
-}
-
-// registerBlueprintToolHandler injects the MCPBlueprintToolHandler into the MCP
-// Service via setter injection to break the circular dependency (blueprints → mcp).
-func registerBlueprintToolHandler(mcpService *mcp.Service, handler *MCPBlueprintToolHandler) {
-	mcpService.SetBlueprintToolHandler(handler)
 }

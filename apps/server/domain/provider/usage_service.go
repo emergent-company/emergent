@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -16,9 +17,6 @@ const (
 	// usageBufferSize is the maximum number of events buffered before the
 	// background writer blocks. Sized to hold ~30 seconds of heavy traffic.
 	usageBufferSize = 1024
-
-	// usageFlushTimeout is how long the shutdown waits for the buffer to drain.
-	usageFlushTimeout = 10 * time.Second
 
 	// pricePerMillionTokens is the divisor for per-token cost calculation
 	// (all prices in the DB are stored per 1M tokens).
@@ -99,30 +97,95 @@ func (s *UsageService) persist(ctx context.Context, event *LLMUsageEvent) error 
 	return nil
 }
 
-// calculateCost resolves pricing via org custom rates → global retail rates
-// and returns the estimated cost in USD.
+// pricingLookup abstracts the pricing queries used during cost resolution so
+// that calculateCostWith can be tested without a database. *Repository satisfies
+// this interface.
+type pricingLookup interface {
+	GetProjectCustomPricing(ctx context.Context, projectID string, provider ProviderType, model string) (*ProjectCustomPricing, error)
+	GetPricing(ctx context.Context, provider ProviderType, model string) (*ProviderPricing, error)
+	GetPricingByModel(ctx context.Context, model string) (*ProviderPricing, error)
+}
+
+// calculateCost resolves pricing via project override → global retail
+// (optimistic matching) and returns the estimated cost in USD.
 //
 // Pricing is per 1 million tokens. Returns 0.0 when no pricing data is found.
 func (s *UsageService) calculateCost(ctx context.Context, event *LLMUsageEvent) float64 {
-	// Try org custom pricing first (enterprise negotiated rates)
-	pricing, err := s.repo.GetOrgCustomPricing(ctx, event.OrgID, event.Provider, event.Model)
-	if err != nil || pricing == nil {
-		// Fall back to global retail pricing
-		global, err := s.repo.GetPricing(ctx, event.Provider, event.Model)
-		if err != nil || global == nil {
-			// No pricing data — log debug and return 0
-			s.log.Debug("no pricing data found for model",
-				slog.String("provider", string(event.Provider)),
-				slog.String("model", event.Model),
-			)
-			return 0.0
-		}
-		return computeCost(event, global.TextInputPrice, global.ImageInputPrice,
-			global.VideoInputPrice, global.AudioInputPrice, global.OutputPrice)
+	return s.calculateCostWith(ctx, s.repo, event)
+}
+
+// calculateCostWith resolves a usage event's price in order:
+//
+//  1. Project override for the exact (project_id, provider, model).
+//  2. Global retail for the exact (provider, model).
+//  3. Global retail by model name only (the model may be served via a
+//     different provider, e.g. an OpenAI-compatible/LiteLLM proxy).
+//  4. Global retail by a normalized model name (stripVendorModelName first,
+//     then normalizeModelName for path prefixes).
+//  5. $0 when no match is found.
+//
+// The first non-nil match SHALL be used. The recorded model name is never
+// mutated; normalization only affects the fallback lookup.
+func (s *UsageService) calculateCostWith(ctx context.Context, lookup pricingLookup, event *LLMUsageEvent) float64 {
+	// 1. Project override (manual rates) — highest precedence.
+	if pricing, err := lookup.GetProjectCustomPricing(ctx, event.ProjectID, event.Provider, event.Model); err == nil && pricing != nil {
+		return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
+			pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
 	}
 
-	return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
-		pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
+	// 2. Global retail — exact provider + model.
+	if pricing, err := lookup.GetPricing(ctx, event.Provider, event.Model); err == nil && pricing != nil {
+		return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
+			pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
+	}
+
+	// 3. Global retail — model name only.
+	if pricing, err := lookup.GetPricingByModel(ctx, event.Model); err == nil && pricing != nil {
+		return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
+			pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
+	}
+
+	// 4. Global retail — normalized model name (vendor prefixes, :tag/@version).
+	if stripped := stripVendorModelName(event.Model); stripped != "" && stripped != event.Model {
+		if pricing, err := lookup.GetPricingByModel(ctx, stripped); err == nil && pricing != nil {
+			return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
+				pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
+		}
+	}
+	if normalized := normalizeModelName(event.Model); normalized != "" && normalized != event.Model {
+		if pricing, err := lookup.GetPricingByModel(ctx, normalized); err == nil && pricing != nil {
+			return computeCost(event, pricing.TextInputPrice, pricing.ImageInputPrice,
+				pricing.VideoInputPrice, pricing.AudioInputPrice, pricing.OutputPrice)
+		}
+	}
+
+	// 5. No pricing data — log debug and return 0.
+	s.log.Debug("no pricing data found for model",
+		slog.String("provider", string(event.Provider)),
+		slog.String("model", event.Model),
+	)
+	return 0.0
+}
+
+// stripVendorModelName reduces a model name to its bare, vendor-free form for
+// optimistic price matching: take the substring after the last '/', strip a
+// trailing ':tag' or '@version' suffix, then lower-case and trim.
+//
+// It is conservative by design — it is applied only for the fallback price
+// lookup and never mutates the recorded model name.
+func stripVendorModelName(model string) string {
+	// Vendor-prefixed names like "deepseek/deepseek-v4-pro" or
+	// "azure/gpt-4o": keep only the last path segment.
+	if idx := strings.LastIndex(model, "/"); idx != -1 {
+		model = model[idx+1:]
+	}
+	// Strip a trailing ":tag" or "@version" (split on ':' and '@').
+	for _, sep := range []string{":", "@"} {
+		if idx := strings.Index(model, sep); idx != -1 {
+			model = model[:idx]
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(model))
 }
 
 // computeCost multiplies per-modality token counts by their respective prices.

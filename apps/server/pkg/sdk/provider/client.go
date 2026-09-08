@@ -371,6 +371,88 @@ func (c *Client) GetOrgUsageByProject(ctx context.Context, orgID string, since, 
 	return &result, nil
 }
 
+// --- Project Pricing Override Methods ---
+
+// ProjectPricingOverride mirrors the server's ProjectCustomPricing JSON shape.
+// Prices are in USD per 1 million tokens.
+type ProjectPricingOverride struct {
+	ID              string    `json:"id"`
+	ProjectID       string    `json:"projectId"`
+	Provider        string    `json:"provider"`
+	Model           string    `json:"model"`
+	TextInputPrice  float64   `json:"textInputPrice"`
+	ImageInputPrice float64   `json:"imageInputPrice"`
+	VideoInputPrice float64   `json:"videoInputPrice"`
+	AudioInputPrice float64   `json:"audioInputPrice"`
+	OutputPrice     float64   `json:"outputPrice"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+// UpsertProjectPricingOverrideRequest is the request body for upserting a
+// project pricing override. Prices are in USD per 1 million tokens.
+type UpsertProjectPricingOverrideRequest struct {
+	Provider        string  `json:"provider"`
+	Model           string  `json:"model"`
+	TextInputPrice  float64 `json:"textInputPrice"`
+	ImageInputPrice float64 `json:"imageInputPrice"`
+	VideoInputPrice float64 `json:"videoInputPrice"`
+	AudioInputPrice float64 `json:"audioInputPrice"`
+	OutputPrice     float64 `json:"outputPrice"`
+}
+
+// ListProjectPricingOverrides returns all pricing overrides for a project.
+func (c *Client) ListProjectPricingOverrides(ctx context.Context, projectID string) ([]ProjectPricingOverride, error) {
+	var result []ProjectPricingOverride
+	err := c.doJSON(ctx, "GET",
+		fmt.Sprintf("/api/v1/projects/%s/pricing-overrides", url.PathEscape(projectID)),
+		nil, &result)
+	return result, err
+}
+
+// UpsertProjectPricingOverride creates or updates a pricing override for a project.
+func (c *Client) UpsertProjectPricingOverride(ctx context.Context, projectID string, req *UpsertProjectPricingOverrideRequest) (*ProjectPricingOverride, error) {
+	var result ProjectPricingOverride
+	err := c.doJSON(ctx, "PUT",
+		fmt.Sprintf("/api/v1/projects/%s/pricing-overrides", url.PathEscape(projectID)),
+		req, &result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteProjectPricingOverride removes a pricing override from a project.
+func (c *Client) DeleteProjectPricingOverride(ctx context.Context, projectID, provider, model string) error {
+	return c.doJSON(ctx, "DELETE",
+		fmt.Sprintf("/api/v1/projects/%s/pricing-overrides/%s/%s",
+			url.PathEscape(projectID), url.PathEscape(provider), url.PathEscape(model)),
+		nil, nil)
+}
+
+// --- Global Retail Pricing Methods ---
+
+// ProviderPricing is a global retail pricing row for a provider + model.
+// Prices are in USD per 1 million tokens.
+type ProviderPricing struct {
+	ID              string    `json:"id"`
+	Provider        string    `json:"provider"`
+	Model           string    `json:"model"`
+	TextInputPrice  float64   `json:"textInputPrice"`
+	ImageInputPrice float64   `json:"imageInputPrice"`
+	VideoInputPrice float64   `json:"videoInputPrice"`
+	AudioInputPrice float64   `json:"audioInputPrice"`
+	OutputPrice     float64   `json:"outputPrice"`
+	LastSynced      time.Time `json:"lastSynced"`
+}
+
+// ListPricing returns all global retail pricing rows.
+func (c *Client) ListPricing(ctx context.Context) ([]ProviderPricing, error) {
+	var result []ProviderPricing
+	err := c.doJSON(ctx, "GET", "/api/v1/pricing", nil, &result)
+	return result, err
+}
+
 // --- Internal helpers ---
 
 func (c *Client) doJSON(ctx context.Context, method, path string, bodyIn, bodyOut any) error {

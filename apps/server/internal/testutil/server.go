@@ -178,21 +178,32 @@ func NewTestServerWithLLM(testDB *TestDB) *TestServer {
 	searchRepo := search.NewRepository(db, log)
 	searchSvc := search.NewService(searchRepo, graphSvc, embeddingsSvc, log)
 
-	mcpSvc := mcp.NewService(mcp.ServiceParams{
-		DB:           db,
-		GraphService: graphSvc,
-		SearchSvc:    searchSvc,
-		Cfg:          testDB.Config,
-		Log:          log,
-		DocumentsSvc: docsSvc,
-		SkillsRepo:   skillsRepo,
-		ApitokenSvc:  apitokenSvc,
-	})
-
-	// Wire discovery service so finalize-discovery tool works in-process.
+	// Cross-domain tool handlers for mcp.Service (mirrors module.go fx wiring).
 	discoveryRepo := discoveryjobs.NewRepository(db, log)
 	discoverySvc := discoveryjobs.NewService(discoveryRepo, docsSvc, testDB.Config, modelFactory, log)
-	mcpSvc.SetDiscoveryService(discoverySvc)
+
+	extractionSchemaProvider := extraction.NewMemorySchemaProvider(db, log)
+	domainClassifier := extraction.NewDomainClassifierMCPAdapter(modelFactory, nil, extractionSchemaProvider, docsSvc, log)
+	jobsCfg := extraction.DefaultObjectExtractionConfig()
+	objJobsSvc := extraction.NewObjectExtractionJobsService(db, log, jobsCfg)
+	reextractionQueuer := extraction.NewReextractionQueuerMCPAdapter(objJobsSvc)
+	schemaIndex := extraction.NewSchemaIndexMCPAdapter(extractionSchemaProvider)
+
+	mcpSvc := mcp.NewService(mcp.ServiceParams{
+		DB:                 db,
+		GraphService:       graphSvc,
+		SearchSvc:          searchSvc,
+		Cfg:                testDB.Config,
+		Log:                log,
+		DocumentsSvc:       docsSvc,
+		SkillsRepo:         skillsRepo,
+		ApitokenSvc:        apitokenSvc,
+		DiscoverySvc:       discoverySvc,
+		DomainClassifier:   domainClassifier,
+		SchemaIndex:        schemaIndex,
+		ReextractionQueuer: reextractionQueuer,
+		DocSignalsReader:   docsSvc,
+	})
 
 	toolPool := agents.NewToolPool(agents.ToolPoolConfig{
 		MCPService: mcpSvc,
@@ -214,20 +225,6 @@ func NewTestServerWithLLM(testDB *TestDB) *TestServer {
 		eventsSvc,
 		log,
 	)
-
-	// Build domain classifier so pre-classification works in-process tests.
-	extractionSchemaProvider := extraction.NewMemorySchemaProvider(db, log)
-	domainClassifier := extraction.NewDomainClassifierMCPAdapter(modelFactory, nil, extractionSchemaProvider, docsSvc, log)
-
-	// Wire all domain MCP adapters — mirrors registerDomainToolsWithMCP in module.go.
-	jobsCfg := extraction.DefaultObjectExtractionConfig()
-	objJobsSvc := extraction.NewObjectExtractionJobsService(db, log, jobsCfg)
-	reextractionQueuer := extraction.NewReextractionQueuerMCPAdapter(objJobsSvc)
-	schemaIndex := extraction.NewSchemaIndexMCPAdapter(extractionSchemaProvider)
-	mcpSvc.SetDomainClassifier(domainClassifier)
-	mcpSvc.SetSchemaIndex(schemaIndex)
-	mcpSvc.SetReextractionQueuer(reextractionQueuer)
-	mcpSvc.SetDocumentSignalsReader(docsSvc)
 
 	// Start background extraction worker so queued jobs actually run.
 	// Uses a fast poll interval (2s) so tests don't wait long.
@@ -395,14 +392,18 @@ func newTestServerWithDB(testDB *TestDB, db bun.IDB) *TestServer {
 
 	// Register orgs routes
 	orgsRepo := orgs.NewRepository(db, log)
-	orgsSvc := orgs.NewService(orgsRepo, log)
+	orgsSvc := orgs.NewService(orgs.ServiceParams{Repo: orgsRepo, Log: log})
 	orgsHandler := orgs.NewHandler(orgsSvc)
 	orgs.RegisterRoutes(e, orgsHandler, authMiddleware)
 
 	// Register projects routes
 	projectsRepo := projects.NewRepository(db, log)
 	agentRepo := agents.NewRepository(db)
-	projectsSvc := projects.NewService(projectsRepo, agentRepo, log)
+	projectsSvc := projects.NewService(projects.ServiceParams{
+		Repo:      projectsRepo,
+		AgentRepo: agentRepo,
+		Log:       log,
+	})
 	projectsHandler := projects.NewHandler(projectsSvc)
 	projects.RegisterRoutes(e, projectsHandler, authMiddleware)
 

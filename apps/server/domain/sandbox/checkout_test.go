@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -42,13 +43,13 @@ func TestCloneConstants(t *testing.T) {
 func TestCheckoutService_BuildCloneURL_NoProvider(t *testing.T) {
 	cs := &CheckoutService{credProvider: nil}
 
-	url, err := cs.buildCloneURL(nil, "https://github.com/org/repo")
+	url, err := cs.buildCloneURL(context.TODO(), "https://github.com/org/repo")
 	assert.NoError(t, err)
 	assert.Equal(t, "https://github.com/org/repo", url)
 }
 
 func TestCheckoutService_CloneRepository_EmptyURL(t *testing.T) {
 	cs := &CheckoutService{}
-	err := cs.CloneRepository(nil, nil, "", "", "", "")
+	err := cs.CloneRepository(context.TODO(), nil, "", "", "", "")
 	assert.NoError(t, err) // No-op for empty URL
 }

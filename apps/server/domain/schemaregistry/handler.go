@@ -38,10 +38,6 @@ func NewHandler(repo *Repository) *Handler {
 // @Router       /api/schema-registry/projects/{projectId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetProjectTypes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -88,10 +84,6 @@ func (h *Handler) GetProjectTypes(c echo.Context) error {
 // @Router       /api/schema-registry/projects/{projectId}/types/{typeName} [get]
 // @Security     bearerAuth
 func (h *Handler) GetObjectType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -131,10 +123,6 @@ func (h *Handler) GetObjectType(c echo.Context) error {
 // @Router       /api/schema-registry/projects/{projectId}/stats [get]
 // @Security     bearerAuth
 func (h *Handler) GetTypeStats(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -168,10 +156,7 @@ func (h *Handler) GetTypeStats(c echo.Context) error {
 // @Router       /api/schema-registry/projects/{projectId}/types [post]
 // @Security     bearerAuth
 func (h *Handler) CreateType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -221,10 +206,6 @@ func (h *Handler) CreateType(c echo.Context) error {
 // @Router       /api/schema-registry/projects/{projectId}/types/{typeName} [put]
 // @Security     bearerAuth
 func (h *Handler) UpdateType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	typeName := c.Param("typeName")
@@ -270,10 +251,6 @@ func (h *Handler) UpdateType(c echo.Context) error {
 // @Router       /api/schema-registry/projects/{projectId}/types/{typeName} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	typeName := c.Param("typeName")
@@ -297,10 +274,6 @@ func (h *Handler) DeleteType(c echo.Context) error {
 
 // ListRelationshipTypes handles GET /api/schema-registry/projects/:projectId/relationship-types
 func (h *Handler) ListRelationshipTypes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 	projectID := c.Param("projectId")
 	if projectID == "" {
 		return apperror.NewBadRequest("projectId is required")
@@ -314,10 +287,6 @@ func (h *Handler) ListRelationshipTypes(c echo.Context) error {
 
 // CreateRelationshipType handles POST /api/schema-registry/projects/:projectId/relationship-types
 func (h *Handler) CreateRelationshipType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 	projectID := c.Param("projectId")
 	if projectID == "" {
 		return apperror.NewBadRequest("projectId is required")
@@ -341,10 +310,6 @@ func (h *Handler) CreateRelationshipType(c echo.Context) error {
 
 // UpdateRelationshipType handles PUT /api/schema-registry/projects/:projectId/relationship-types/:name
 func (h *Handler) UpdateRelationshipType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 	projectID := c.Param("projectId")
 	name := c.Param("name")
 	if projectID == "" || name == "" {
@@ -367,10 +332,6 @@ func (h *Handler) UpdateRelationshipType(c echo.Context) error {
 
 // DeleteRelationshipType handles DELETE /api/schema-registry/projects/:projectId/relationship-types/:name
 func (h *Handler) DeleteRelationshipType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 	projectID := c.Param("projectId")
 	name := c.Param("name")
 	if projectID == "" || name == "" {

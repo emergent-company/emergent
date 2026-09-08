@@ -133,10 +133,7 @@ func (h *Handler) sendHeartbeats() {
 // @Router       /api/events/stream [get]
 // @Security     bearerAuth
 func (h *Handler) HandleStream(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Get projectId from query param (required)
 	projectID := c.QueryParam("projectId")

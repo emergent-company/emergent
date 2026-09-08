@@ -46,10 +46,7 @@ func NewHandler(repo *Repository) *Handler {
 // @Router       /api/monitoring/extraction-jobs [get]
 // @Security     bearerAuth
 func (h *Handler) ListExtractionJobs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
@@ -136,10 +133,7 @@ func (h *Handler) ListExtractionJobs(c echo.Context) error {
 // @Router       /api/monitoring/extraction-jobs/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetExtractionJobDetail(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
@@ -214,10 +208,7 @@ func (h *Handler) GetExtractionJobDetail(c echo.Context) error {
 // @Router       /api/monitoring/extraction-jobs/{id}/logs [get]
 // @Security     bearerAuth
 func (h *Handler) GetExtractionJobLogs(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
@@ -289,10 +280,7 @@ func (h *Handler) GetExtractionJobLogs(c echo.Context) error {
 // @Router       /api/monitoring/extraction-jobs/{id}/llm-calls [get]
 // @Security     bearerAuth
 func (h *Handler) GetExtractionJobLLMCalls(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")

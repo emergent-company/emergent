@@ -35,10 +35,7 @@ func NewHandler(svc *Service, userProfile *auth.UserProfileService) *Handler {
 // @Router       /api/projects/{projectId}/tokens [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -87,10 +84,6 @@ func (h *Handler) Create(c echo.Context) error {
 // @Router       /api/projects/{projectId}/tokens [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -120,10 +113,6 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/projects/{projectId}/tokens/{tokenId} [get]
 // @Security     bearerAuth
 func (h *Handler) Get(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	tokenID := c.Param("tokenId")
@@ -158,10 +147,7 @@ func (h *Handler) Get(c echo.Context) error {
 // @Router       /api/projects/{projectId}/tokens/{tokenId} [delete]
 // @Security     bearerAuth
 func (h *Handler) Revoke(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	tokenID := c.Param("tokenId")
@@ -191,10 +177,7 @@ func (h *Handler) Revoke(c echo.Context) error {
 // @Router       /api/tokens [post]
 // @Security     bearerAuth
 func (h *Handler) CreateAccountToken(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req CreateAccountTokenRequest
 	if err := c.Bind(&req); err != nil {
@@ -235,10 +218,7 @@ func (h *Handler) CreateAccountToken(c echo.Context) error {
 // @Router       /api/tokens [get]
 // @Security     bearerAuth
 func (h *Handler) ListAccountTokens(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	result, err := h.svc.ListAccountTokens(c.Request().Context(), user.ID)
 	if err != nil {
@@ -262,10 +242,7 @@ func (h *Handler) ListAccountTokens(c echo.Context) error {
 // @Router       /api/tokens/{tokenId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetAccountToken(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	tokenID := c.Param("tokenId")
 	if tokenID == "" {
@@ -297,10 +274,7 @@ func (h *Handler) GetAccountToken(c echo.Context) error {
 // @Router       /api/tokens/{tokenId} [delete]
 // @Security     bearerAuth
 func (h *Handler) RevokeAccountToken(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	tokenID := c.Param("tokenId")
 	if tokenID == "" {
@@ -332,10 +306,7 @@ func (h *Handler) RevokeAccountToken(c echo.Context) error {
 // @Router       /api/projects/{projectId}/tokens/{tokenId} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateScopes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	tokenID := c.Param("tokenId")
@@ -376,10 +347,7 @@ func (h *Handler) UpdateScopes(c echo.Context) error {
 // @Router       /api/projects/{projectId}/tokens/{tokenId}/regenerate [post]
 // @Security     bearerAuth
 func (h *Handler) RegenerateToken(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	tokenID := c.Param("tokenId")
@@ -411,10 +379,7 @@ func (h *Handler) RegenerateToken(c echo.Context) error {
 // @Router       /api/tokens/{tokenId}/regenerate [post]
 // @Security     bearerAuth
 func (h *Handler) RegenerateAccountToken(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	tokenID := c.Param("tokenId")
 	if tokenID == "" {
@@ -445,10 +410,7 @@ func (h *Handler) RegenerateAccountToken(c echo.Context) error {
 // @Router       /api/tokens/{tokenId} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateAccountTokenScopes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	tokenID := c.Param("tokenId")
 	if tokenID == "" {

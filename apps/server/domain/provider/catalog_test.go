@@ -1,6 +1,11 @@
 package provider
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"google.golang.org/genai"
@@ -192,4 +197,162 @@ func TestStaticModels(t *testing.T) {
 				len(googleModels), len(vertexModels))
 		}
 	})
+}
+
+func newTestCatalogService() *ModelCatalogService {
+	return NewModelCatalogService(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func findModel(models []ProviderSupportedModel, name string) *ProviderSupportedModel {
+	for i := range models {
+		if models[i].ModelName == name {
+			return &models[i]
+		}
+	}
+	return nil
+}
+
+func TestFetchOpenAICompatibleModels(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[
+			{"id":"deepseek-v4-pro","context_length":131072},
+			{"id":"gpt-4o"},
+			{"id":"gemini/gemini-embedding-001","max_model_len":8192}
+		]}`)
+	}))
+	defer srv.Close()
+
+	svc := newTestCatalogService()
+	cred := &ResolvedCredential{
+		BaseURL:         srv.URL,
+		APIKey:          "sk-test",
+		GenerativeModel: "deepseek-v4-pro",
+		EmbeddingModel:  "gemini/gemini-embedding-001",
+	}
+
+	models, err := svc.fetchOpenAICompatibleModels(context.Background(), cred)
+	if err != nil {
+		t.Fatalf("fetchOpenAICompatibleModels() error = %v", err)
+	}
+	if gotAuth != "Bearer sk-test" {
+		t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer sk-test")
+	}
+	if len(models) != 3 {
+		t.Fatalf("got %d models, want 3: %+v", len(models), models)
+	}
+
+	pro := findModel(models, "deepseek-v4-pro")
+	if pro == nil {
+		t.Fatal("deepseek-v4-pro not returned")
+	}
+	if pro.ModelType != ModelTypeGenerative {
+		t.Errorf("deepseek-v4-pro type = %q, want generative", pro.ModelType)
+	}
+	if pro.MaxInputTokens == nil || *pro.MaxInputTokens != 131072 {
+		t.Errorf("deepseek-v4-pro input = %v, want 131072", pro.MaxInputTokens)
+	}
+	if pro.MaxOutputTokens == nil || *pro.MaxOutputTokens != 65536 {
+		t.Errorf("deepseek-v4-pro output = %v, want 65536", pro.MaxOutputTokens)
+	}
+
+	gpt := findModel(models, "gpt-4o")
+	if gpt == nil {
+		t.Fatal("gpt-4o not returned")
+	}
+	if gpt.ModelType != ModelTypeGenerative {
+		t.Errorf("gpt-4o type = %q, want generative", gpt.ModelType)
+	}
+	if gpt.MaxInputTokens == nil || *gpt.MaxInputTokens != openAICompatibleDefaultInputTokens {
+		t.Errorf("gpt-4o input = %v, want default %d", gpt.MaxInputTokens, openAICompatibleDefaultInputTokens)
+	}
+
+	emb := findModel(models, "gemini/gemini-embedding-001")
+	if emb == nil {
+		t.Fatal("gemini/gemini-embedding-001 not returned")
+	}
+	if emb.ModelType != ModelTypeEmbedding {
+		t.Errorf("gemini/gemini-embedding-001 type = %q, want embedding", emb.ModelType)
+	}
+	if emb.DisplayName != "gemini-embedding-001" {
+		t.Errorf("gemini/gemini-embedding-001 display = %q, want %q", emb.DisplayName, "gemini-embedding-001")
+	}
+	if emb.MaxInputTokens == nil || *emb.MaxInputTokens != 8192 {
+		t.Errorf("gemini/gemini-embedding-001 input = %v, want 8192 (from max_model_len)", emb.MaxInputTokens)
+	}
+}
+
+func TestFetchOpenAICompatibleModelsAddsConfiguredModels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[{"id":"gpt-4o"}]}`)
+	}))
+	defer srv.Close()
+
+	svc := newTestCatalogService()
+	cred := &ResolvedCredential{
+		BaseURL:         srv.URL,
+		GenerativeModel: "deepseek-v4-pro",             // not in /v1/models
+		EmbeddingModel:  "gemini/gemini-embedding-001", // not in /v1/models
+	}
+
+	models, err := svc.fetchOpenAICompatibleModels(context.Background(), cred)
+	if err != nil {
+		t.Fatalf("fetchOpenAICompatibleModels() error = %v", err)
+	}
+	if len(models) != 3 {
+		t.Fatalf("got %d models, want 3 (1 fetched + 2 configured): %+v", len(models), models)
+	}
+	if m := findModel(models, "deepseek-v4-pro"); m == nil || m.ModelType != ModelTypeGenerative {
+		t.Errorf("configured generative model missing or misclassified: %+v", m)
+	}
+	if m := findModel(models, "gemini/gemini-embedding-001"); m == nil || m.ModelType != ModelTypeEmbedding {
+		t.Errorf("configured embedding model missing or misclassified: %+v", m)
+	}
+}
+
+func TestFetchOpenAICompatibleModelsRequiresBaseURL(t *testing.T) {
+	svc := newTestCatalogService()
+	_, err := svc.fetchOpenAICompatibleModels(context.Background(), &ResolvedCredential{})
+	if err == nil {
+		t.Fatal("expected error for missing base_url")
+	}
+}
+
+func TestConfiguredOpenAIModels(t *testing.T) {
+	svc := newTestCatalogService()
+	models := svc.configuredOpenAIModels(&ResolvedCredential{
+		GenerativeModel: "deepseek-v4-pro",
+		EmbeddingModel:  "gemini/gemini-embedding-001",
+	})
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2: %+v", len(models), models)
+	}
+	// Duplicate generative/embedding name collapses to one row.
+	dup := svc.configuredOpenAIModels(&ResolvedCredential{
+		GenerativeModel: "same-model",
+		EmbeddingModel:  "same-model",
+	})
+	if len(dup) != 1 {
+		t.Fatalf("got %d models, want 1 (deduped): %+v", len(dup), dup)
+	}
+}
+
+func TestDisplayNameForOpenAICompatible(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"deepseek-v4-pro", "deepseek-v4-pro"},
+		{"gemini/gemini-embedding-001", "gemini-embedding-001"},
+		{"openai/gpt-4o", "gpt-4o"},
+		{"", ""},
+		{"no-slash", "no-slash"},
+	}
+	for _, tt := range tests {
+		if got := displayNameForOpenAICompatible(tt.input); got != tt.want {
+			t.Errorf("displayNameForOpenAICompatible(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
 }

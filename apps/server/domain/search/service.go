@@ -128,14 +128,6 @@ func (s *Service) Search(ctx context.Context, projectID uuid.UUID, req *UnifiedS
 	}, nil
 }
 
-// searchOutcome holds the result of a single search goroutine
-type searchOutcome struct {
-	results  any
-	elapsed  time.Duration
-	rawDebug any
-	err      error
-}
-
 // graphOutcome wraps graph search results with timing and debug data
 type graphOutcome struct {
 	results  []*UnifiedSearchGraphResult
@@ -359,6 +351,7 @@ func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, r
 			ObjectType:    item.Object.Type,
 			Key:           key,
 			Fields:        item.Object.Properties,
+			Labels:        item.Object.Labels,
 			Score:         item.Score,
 			Rank:          i + 1,
 			LexicalScore:  item.LexicalScore,
@@ -873,6 +866,7 @@ func (s *Service) graphResultToItem(g *UnifiedSearchGraphResult) UnifiedSearchRe
 		ObjectType:    g.ObjectType,
 		Key:           g.Key,
 		Fields:        g.Fields,
+		Labels:        g.Labels,
 		Relationships: g.Relationships,
 		Explanation:   g.Explanation,
 	}

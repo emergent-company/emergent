@@ -35,10 +35,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/user-activity/record [post]
 // @Security     bearerAuth
 func (h *Handler) Record(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.QueryParam("project_id")
 	if projectID == "" {
@@ -74,10 +71,7 @@ func (h *Handler) Record(c echo.Context) error {
 // @Router       /api/user-activity/recent [get]
 // @Security     bearerAuth
 func (h *Handler) GetRecent(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	limit := 20
 	if limitStr := c.QueryParam("limit"); limitStr != "" {
@@ -109,10 +103,7 @@ func (h *Handler) GetRecent(c echo.Context) error {
 // @Router       /api/user-activity/recent/{type} [get]
 // @Security     bearerAuth
 func (h *Handler) GetRecentByType(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	resourceType := c.Param("type")
 	if resourceType == "" {
@@ -146,10 +137,7 @@ func (h *Handler) GetRecentByType(c echo.Context) error {
 // @Router       /api/user-activity/recent [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteAll(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if err := h.svc.DeleteAll(c.Request().Context(), user.ID); err != nil {
 		return err
@@ -173,10 +161,7 @@ func (h *Handler) DeleteAll(c echo.Context) error {
 // @Router       /api/user-activity/recent/{type}/{resourceId} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteByResource(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	resourceType := c.Param("type")
 	resourceID := c.Param("resourceId")

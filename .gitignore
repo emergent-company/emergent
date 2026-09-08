@@ -47,7 +47,7 @@ secrets/
 !secrets/README.md
 
 # Database backups and schema dumps
-backups/
+/backups/
 
 # Playwright / E2E artifacts
 playwright-report/

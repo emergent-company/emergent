@@ -32,10 +32,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/users/search [get]
 // @Security     bearerAuth
 func (h *Handler) Search(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	emailQuery := c.QueryParam("email")
 	if emailQuery == "" {

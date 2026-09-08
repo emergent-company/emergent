@@ -41,7 +41,7 @@ func NewHandler(svc *Service, branchStore *branches.Store) *Handler {
 // @Router       /api/graph/journal [get]
 // @Security     BearerAuth
 func (h *Handler) ListJournal(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func (h *Handler) ListJournal(c echo.Context) error {
 // @Router       /api/graph/journal/notes [post]
 // @Security     BearerAuth
 func (h *Handler) AddNote(c echo.Context) error {
-	projectID, err := getProjectID(c)
+	projectID, err := auth.GetProjectUUID(c)
 	if err != nil {
 		return err
 	}
@@ -162,12 +162,6 @@ func (h *Handler) resolveBranchID(c echo.Context, projectID string, branchStr st
 		return nil, err
 	}
 	return &id, nil
-}
-
-// getProjectID extracts the project UUID from the auth context.
-// Deprecated: Use auth.GetProjectUUID(c) directly.
-func getProjectID(c echo.Context) (uuid.UUID, error) {
-	return auth.GetProjectUUID(c)
 }
 
 // parseSince parses a since string which may be an ISO-8601 timestamp or a

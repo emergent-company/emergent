@@ -40,15 +40,6 @@ import (
 )
 
 const (
-	// compressThresholdRatio triggers compression when promptTokens/contextWindow
-	// exceeds this ratio (only relevant when the sliding window is exhausted or
-	// the context window is unknown).
-	compressThresholdRatio = 0.80
-
-	// compressHeadRatio controls what fraction of the total event list is
-	// treated as "old context" to be summarized (oldest events).
-	compressHeadRatio = 0.50
-
 	// compressSummaryMaxRatio is the anti-thrash guard: if the generated
 	// summary token count exceeds this fraction of the context window the
 	// compressor bails out and returns the session unchanged.

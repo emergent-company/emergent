@@ -63,110 +63,6 @@ func fixtureUsageSummary() provider.UsageSummary {
 	}
 }
 
-// --- Organization Provider Config Tests ---
-
-func TestUpsertOrgConfig(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	fixture := fixtureProviderConfig()
-	mock.On("PUT", "/api/v1/organizations/org_test456/providers/google",
-		func(w http.ResponseWriter, r *http.Request) {
-			testutil.AssertHeader(t, r, "Content-Type", "application/json")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			if err := encodeJSON(w, fixture); err != nil {
-				t.Fatalf("encode: %v", err)
-			}
-		})
-
-	c := newClient(t, mock)
-	result, err := c.Provider.UpsertOrgConfig(context.Background(), "org_test456", provider.ProviderGoogleAI,
-		&provider.UpsertProviderConfigRequest{APIKey: "AIza-test-key"})
-	if err != nil {
-		t.Fatalf("UpsertOrgConfig() error = %v", err)
-	}
-	if result.Provider != provider.ProviderGoogleAI {
-		t.Errorf("expected provider %s, got %s", provider.ProviderGoogleAI, result.Provider)
-	}
-	if result.GenerativeModel != fixture.GenerativeModel {
-		t.Errorf("expected generative model %s, got %s", fixture.GenerativeModel, result.GenerativeModel)
-	}
-}
-
-func TestGetOrgConfig(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	fixture := fixtureProviderConfig()
-	mock.OnJSON("GET", "/api/v1/organizations/org_test456/providers/google",
-		http.StatusOK, fixture)
-
-	c := newClient(t, mock)
-	result, err := c.Provider.GetOrgConfig(context.Background(), "org_test456", provider.ProviderGoogleAI)
-	if err != nil {
-		t.Fatalf("GetOrgConfig() error = %v", err)
-	}
-	if result.ID != fixture.ID {
-		t.Errorf("expected ID %s, got %s", fixture.ID, result.ID)
-	}
-}
-
-func TestDeleteOrgConfig(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	mock.OnJSON("DELETE", "/api/v1/organizations/org_test456/providers/google",
-		http.StatusOK, map[string]string{"status": "deleted"})
-
-	c := newClient(t, mock)
-	err := c.Provider.DeleteOrgConfig(context.Background(), "org_test456", provider.ProviderGoogleAI)
-	if err != nil {
-		t.Fatalf("DeleteOrgConfig() error = %v", err)
-	}
-}
-
-func TestListOrgConfigs(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	fixture := []provider.ProviderConfig{fixtureProviderConfig()}
-	mock.OnJSON("GET", "/api/v1/organizations/org_test456/providers",
-		http.StatusOK, fixture)
-
-	c := newClient(t, mock)
-	result, err := c.Provider.ListOrgConfigs(context.Background(), "org_test456")
-	if err != nil {
-		t.Fatalf("ListOrgConfigs() error = %v", err)
-	}
-	if len(result) != 1 {
-		t.Fatalf("expected 1 config, got %d", len(result))
-	}
-	if result[0].ID != fixture[0].ID {
-		t.Errorf("expected config ID %s, got %s", fixture[0].ID, result[0].ID)
-	}
-	if result[0].Provider != provider.ProviderGoogleAI {
-		t.Errorf("expected provider %s, got %s", provider.ProviderGoogleAI, result[0].Provider)
-	}
-}
-
-func TestListOrgConfigs_Empty(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	mock.OnJSON("GET", "/api/v1/organizations/org_test456/providers",
-		http.StatusOK, []provider.ProviderConfig{})
-
-	c := newClient(t, mock)
-	result, err := c.Provider.ListOrgConfigs(context.Background(), "org_test456")
-	if err != nil {
-		t.Fatalf("ListOrgConfigs() error = %v", err)
-	}
-	if len(result) != 0 {
-		t.Errorf("expected 0 configs, got %d", len(result))
-	}
-}
-
 // --- Project Provider Config Tests ---
 
 func TestUpsertProjectConfig(t *testing.T) {
@@ -348,39 +244,67 @@ func TestGetOrgUsage(t *testing.T) {
 	}
 }
 
-// --- Error handling ---
-
-func TestUpsertOrgConfig_4xxError(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	mock.OnJSON("PUT", "/api/v1/organizations/org_test456/providers/google",
-		http.StatusBadRequest, map[string]string{"error": "missing api key"})
-
-	c := newClient(t, mock)
-	_, err := c.Provider.UpsertOrgConfig(context.Background(), "org_test456", provider.ProviderGoogleAI,
-		&provider.UpsertProviderConfigRequest{})
-	if err == nil {
-		t.Fatal("expected error for 400 response, got nil")
-	}
-}
-
-func TestListOrgConfigs_ServerError(t *testing.T) {
-	mock := testutil.NewMockServer(t)
-	defer mock.Close()
-
-	mock.OnJSON("GET", "/api/v1/organizations/org_test456/providers",
-		http.StatusInternalServerError, map[string]string{"error": "internal error"})
-
-	c := newClient(t, mock)
-	_, err := c.Provider.ListOrgConfigs(context.Background(), "org_test456")
-	if err == nil {
-		t.Fatal("expected error for 500 response, got nil")
-	}
-}
-
 // encodeJSON is a test helper to JSON-encode a value into a ResponseWriter.
 func encodeJSON(w http.ResponseWriter, v any) error {
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(v)
+}
+
+func fixtureProviderPricing() provider.ProviderPricing {
+	return provider.ProviderPricing{
+		ID:             "price_test123",
+		Provider:       provider.ProviderDeepSeek,
+		Model:          "deepseek-v4-pro",
+		TextInputPrice: 1.74,
+		OutputPrice:    3.48,
+		LastSynced:     time.Now(),
+	}
+}
+
+func TestListPricing(t *testing.T) {
+	mock := testutil.NewMockServer(t)
+	defer mock.Close()
+
+	fixture := []provider.ProviderPricing{fixtureProviderPricing()}
+	mock.OnJSON("GET", "/api/v1/pricing", http.StatusOK, fixture)
+
+	c := newClient(t, mock)
+	result, err := c.Provider.ListPricing(context.Background())
+	if err != nil {
+		t.Fatalf("ListPricing() error = %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 pricing row, got %d", len(result))
+	}
+	if result[0].Provider != fixture[0].Provider {
+		t.Errorf("expected provider %q, got %q", fixture[0].Provider, result[0].Provider)
+	}
+	if result[0].Model != fixture[0].Model {
+		t.Errorf("expected model %q, got %q", fixture[0].Model, result[0].Model)
+	}
+	if result[0].TextInputPrice != fixture[0].TextInputPrice {
+		t.Errorf("expected text input price %v, got %v", fixture[0].TextInputPrice, result[0].TextInputPrice)
+	}
+	if result[0].OutputPrice != fixture[0].OutputPrice {
+		t.Errorf("expected output price %v, got %v", fixture[0].OutputPrice, result[0].OutputPrice)
+	}
+}
+
+func TestListPricing_Empty(t *testing.T) {
+	mock := testutil.NewMockServer(t)
+	defer mock.Close()
+
+	mock.OnJSON("GET", "/api/v1/pricing", http.StatusOK, []provider.ProviderPricing{})
+
+	c := newClient(t, mock)
+	result, err := c.Provider.ListPricing(context.Background())
+	if err != nil {
+		t.Fatalf("ListPricing() error = %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected empty (non-nil) slice from ListPricing")
+	}
+	if len(result) != 0 {
+		t.Fatalf("expected 0 pricing rows, got %d", len(result))
+	}
 }

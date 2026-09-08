@@ -125,6 +125,36 @@ func TestMapUnifiedToSearchResponse_EmptyResults(t *testing.T) {
 }
 
 // =============================================================================
+// mapUnifiedToSearchResponse — labels threading + labels filter
+// =============================================================================
+
+func TestMapUnifiedToSearchResponse_LabelsThreaded(t *testing.T) {
+	svc := &Service{}
+	res := &search.UnifiedSearchResponse{
+		Results: []search.UnifiedSearchResultItem{
+			{Type: search.ItemTypeGraph, ObjectType: "Note", Score: 1.0, Labels: []string{"probe-label-xyz"}},
+		},
+	}
+	out := svc.mapUnifiedToSearchResponse(res, nil, nil, nil, nil)
+	require.Len(t, out.Data, 1)
+	require.NotNil(t, out.Data[0].Object)
+	assert.Equal(t, []string{"probe-label-xyz"}, out.Data[0].Object.Labels)
+}
+
+func TestMapUnifiedToSearchResponse_LabelsFilterMatches(t *testing.T) {
+	svc := &Service{}
+	res := &search.UnifiedSearchResponse{
+		Results: []search.UnifiedSearchResultItem{
+			{Type: search.ItemTypeGraph, ObjectType: "Note", Score: 1.0, Labels: []string{"probe-label-xyz"}},
+			{Type: search.ItemTypeGraph, ObjectType: "Task", Score: 1.0, Labels: []string{"other-label"}},
+		},
+	}
+	out := svc.mapUnifiedToSearchResponse(res, nil, []string{"probe-label-xyz"}, nil, nil)
+	require.Len(t, out.Data, 1)
+	assert.Equal(t, "Note", out.Data[0].Object.Type)
+}
+
+// =============================================================================
 // getSystemNamespaceTypes — namespaceFilter logic (no DB)
 // =============================================================================
 

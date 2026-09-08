@@ -34,10 +34,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/blueprints [post]
 // @Security     bearerAuth
 func (h *Handler) CreateBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req CreateBlueprintRequest
 	if err := c.Bind(&req); err != nil {
@@ -73,10 +70,7 @@ func (h *Handler) CreateBlueprint(c echo.Context) error {
 // @Router       /api/blueprints [get]
 // @Security     bearerAuth
 func (h *Handler) ListBlueprints(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	nameFilter := c.QueryParam("name")
 	blueprints, err := h.svc.ListBlueprints(c.Request().Context(), user.ProjectID, nameFilter)
@@ -101,10 +95,7 @@ func (h *Handler) ListBlueprints(c echo.Context) error {
 // @Router       /api/blueprints/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -136,10 +127,7 @@ func (h *Handler) GetBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/{id} [put]
 // @Security     bearerAuth
 func (h *Handler) UpdateBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -174,10 +162,7 @@ func (h *Handler) UpdateBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/{id}/publish [post]
 // @Security     bearerAuth
 func (h *Handler) PublishBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -206,10 +191,7 @@ func (h *Handler) PublishBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/{id}/deprecate [post]
 // @Security     bearerAuth
 func (h *Handler) DeprecateBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -241,10 +223,7 @@ func (h *Handler) DeprecateBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/{id}/versions [post]
 // @Security     bearerAuth
 func (h *Handler) NewVersion(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -281,10 +260,7 @@ func (h *Handler) NewVersion(c echo.Context) error {
 // @Router       /api/blueprints/{id}/apply [post]
 // @Security     bearerAuth
 func (h *Handler) ApplyBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -324,10 +300,7 @@ func (h *Handler) ApplyBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {
@@ -354,10 +327,7 @@ func (h *Handler) DeleteBlueprint(c echo.Context) error {
 // @Router       /api/blueprints/name/{name}/versions [get]
 // @Security     bearerAuth
 func (h *Handler) ListVersionsByName(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	name := c.Param("name")
 	if name == "" {
@@ -384,10 +354,7 @@ func (h *Handler) ListVersionsByName(c echo.Context) error {
 // @Router       /api/blueprints/applied [get]
 // @Security     bearerAuth
 func (h *Handler) ListAppliedBlueprints(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := user.ProjectID
 	if projectID == "" {
@@ -417,10 +384,7 @@ func (h *Handler) ListAppliedBlueprints(c echo.Context) error {
 // @Router       /api/blueprints/{id}/unapply [post]
 // @Security     bearerAuth
 func (h *Handler) UnapplyBlueprint(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	id := c.Param("id")
 	if id == "" {

@@ -11,6 +11,27 @@ The Memory Go server (`apps/server/`) is a 46-domain monolith using `uber-go/fx`
 
 This change is purely internal — no external API, CLI, or database schema changes.
 
+## Re-sync (Sep 2026)
+
+Three months after the original design, the codebase has drifted both directions. Correcting the record before resuming remediation:
+
+| Debt | May (design) | Sep (re-sync) | Δ |
+|---|---|---|---|
+| inline `user == nil` guards | 289 | 312 | +23 |
+| `apperror` Style A (`Err*.With*`) | 664 | 1168 | +504 |
+| Style B (`apperror.New*`) | — | 732 | already mixed in |
+| cross-domain `SetXxx` setters | 9 | 21 | +12 |
+| local `getProjectID()` copies | 3 | 3 | = |
+| domains | 46 | 49 | +3 |
+
+**Shipped but not recorded in tasks.md:** §1 (httputil), §2 helpers, §4 helper, §6 (graph/journal decoupling), §7 (FeatureSet). **Recorded but not actually done:** the *application* of those helpers — `RequireProject()` is defined yet applied to 0 routes; 3 `fx.Hook` blocks remain; all 312 guards and 1168 Style-A calls remain.
+
+**Wrong assumption:** `domain/chat` and `pkg/llm/vertex` were assumed possibly-dead. Both are **live** — `chat.Module` is wired in `main.go`, `pkg/sdk/chat` has a full client, `cmd/swiftbridge` imports it, and `domain/extraction` embedding workers depend on `vertex.EmbedResult`. Domain removal is off the table; keep them feature-flagged instead.
+
+**Missing layer:** the `.golangci.yml` blanket-excludes `errcheck`, `staticcheck`, and `unused` via `text: "."` — no enforcement exists, which is *why* the debt grew. See D8.
+
+**Resolved — `pkg/sdk` duplicate types are a legitimate boundary, not debt.** The sdk is a self-contained published module (`.../apps/server/pkg/sdk`) with **zero** imports from the server module, consumed by `tools/cli`, `cmd/swiftbridge`, and external clients. Its 4 DTO definitions (`agents`, `agentdefinitions`, `mcpregistry`, `superadmin`) must stay self-contained so client consumers don't pull in echo/fx/bun. Leave them. The genuine httputil residue is *inside* the server module only: 4 type aliases, duplicated `SuccessResponse`/`ErrorResponse` constructor funcs in `agents` + `mcpregistry` (also named differently from httputil's `NewSuccessResponse`/`NewErrorResponse`), and `superadmin.SuccessResponse`.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -52,6 +73,8 @@ func RequireProject() echo.MiddlewareFunc
 func MustGetUser(c echo.Context) *auth.User   // panics if nil (never should be post-middleware)
 func GetProjectUUID(c echo.Context) (uuid.UUID, error)
 ```
+
+> **Re-sync correction (Sep 2026):** the premise was wrong. Routes are **already** protected — `auth.Middleware.RequireAuth()` (65 usages) + `RequireProjectID()` (10) are applied in every `routes.go`. The 312 `user == nil` guards in handlers are **redundant defense-in-depth**, not missing auth (e.g. `apitoken.Create` re-checks `user == nil` on a route already wrapped in `RequireAuth()`). Corrected plan: **delete the guards** via `auth.MustGetUser(c)` and **retire the unused package-level `RequireProject()`** (0 usages — it duplicates `auth.Middleware.RequireAuth()`), rather than "rolling it out". `MustGetUser()` and `GetProjectUUID()` remain valuable.
 
 ### D3 — Standardize on `apperror` Style B (`apperror.New*` constructors)
 
@@ -149,6 +172,22 @@ func RegisterWorkerLifecycle(lc fx.Lifecycle, w Worker) {
 
 All 6 current lifecycle hook blocks in `extraction/module.go` collapse to `RegisterWorkerLifecycle(lc, worker)` calls.
 
+### D8 — Prevention layer (L3): lint gates, not one-shot cleanup
+
+**Decision:** Remediation alone will decay — it already did (+504 Style-A calls in 3 months). Add enforcement so re-introduction is impossible:
+
+1. **Un-mask the linter.** Remove the three blanket `text: "."` exclusions for `errcheck`, `staticcheck`, `unused`. Replace with targeted `exclude-rules` (or per-line `//nolint`) for the confirmed-legacy set only.
+2. **Custom rules for the four duplication patterns.** Fail CI on:
+   - inline `user == nil` guard in a `domain/*/handler.go` → force `RequireProject()` + `MustGetUser()`
+   - new `func (s *Service) Set[A-Z]` cross-domain setter → force constructor/`fx.Provide` injection
+   - new `type APIResponse|PaginatedResponse|SuccessResponse` outside `pkg/httputil`
+   - new `apperror.Err*.With*` Style A chaining → force Style B
+3. **Ratchet, don't fix-all-at-once.** Record current counts as the floor; CI fails only on *new* violations (baseline ratchet). Existing debt gets paid down via §2–§5 without blocking.
+
+**Rationale:** a linter that excludes everything is a lint theater. The growth data proves cleanup without gates is temporary. Enforcement turns a one-shot audit into a systemic invariant.
+
+**Alternative considered:** full clean baseline before enabling any gate → rejected, would block all merge traffic for weeks. Ratchet enables the gate immediately and lets remediation proceed incrementally.
+
 ## Risks / Trade-offs
 
 **`RequireProject()` middleware rollout is broad** → Mitigation: Apply incrementally per route group; handlers not yet migrated continue to work (middleware adds a check, doesn't remove existing ones). Use a single PR per domain.
@@ -159,7 +198,7 @@ All 6 current lifecycle hook blocks in `extraction/module.go` collapse to `Regis
 
 **`FeatureSet` defaults must preserve current behavior** → If any default flips from `true` to `false`, existing deployments break silently. → Mitigation: All currently-active domains default to `true`; only currently-inactive defaults (`devtools`, `chat`) default to `false`.
 
-**`domain/chat` removal requires UI audit first** → Cannot remove until confirmed no active callers. → Mitigation: Feature flag `FEATURE_CHAT=false` disables it without removal; deletion is a follow-on PR after confirmation.
+**`domain/chat` is live, not removable** → Re-sync confirms `chat.Module` wired in `main.go`, `pkg/sdk/chat` client, and `cmd/swiftbridge` dependency. `FEATURE_CHAT` (default `true`) gates it for "lite" builds; do **not** plan deletion.
 
 ## Migration Plan
 
@@ -180,5 +219,5 @@ Incremental — each step is independently mergeable:
 ## Open Questions
 
 1. **Should `FEATURE_AGENTS=false` also implicitly disable `FEATURE_MCP`?** — MCP without agents is partially functional (can relay to external tools). Decision needed before Step 8.
-2. **`domain/chat` — is the `/api/chat` route called by any current UI page?** — Needs a grep of `emergent.memory.ui` repo before Step 9.
+2. ~~`domain/chat` — is the `/api/chat` route called by any current UI page?~~ **Resolved (Sep 2026):** chat is live — `pkg/sdk/chat` client + `cmd/swiftbridge` + `main.go` wiring. Keep feature-flagged, do not remove.
 3. **`RequireProject()` vs `RequireAuth()` naming** — Should there be a separate `RequireAuth()` (user only, no project) for admin routes that don't need a project context?

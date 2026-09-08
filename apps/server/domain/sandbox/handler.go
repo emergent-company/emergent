@@ -9,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
-	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
 // Handler handles workspace HTTP requests.
@@ -140,10 +139,6 @@ func (h *Handler) provisionContainer(ctx context.Context, ws *WorkspaceResponse,
 // @Router       /api/v1/agent/sandboxes [post]
 // @Security     bearerAuth
 func (h *Handler) CreateWorkspace(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	var req CreateWorkspaceRequest
 	if err := c.Bind(&req); err != nil {
@@ -186,10 +181,6 @@ func (h *Handler) CreateWorkspace(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetWorkspace(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -222,10 +213,6 @@ func (h *Handler) GetWorkspace(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes [get]
 // @Security     bearerAuth
 func (h *Handler) ListWorkspaces(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	filters := &ListFilters{
 		ContainerType:  ContainerType(c.QueryParam("container_type")),
@@ -254,10 +241,6 @@ func (h *Handler) ListWorkspaces(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteWorkspace(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -288,10 +271,6 @@ func (h *Handler) DeleteWorkspace(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id}/stop [post]
 // @Security     bearerAuth
 func (h *Handler) StopWorkspace(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -322,10 +301,6 @@ func (h *Handler) StopWorkspace(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id}/resume [post]
 // @Security     bearerAuth
 func (h *Handler) ResumeWorkspace(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -353,10 +328,6 @@ func (h *Handler) ResumeWorkspace(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/providers [get]
 // @Security     bearerAuth
 func (h *Handler) ListProviders(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	providers := h.orchestrator.ListProviders()
 	return c.JSON(http.StatusOK, providers)
@@ -377,10 +348,6 @@ func (h *Handler) ListProviders(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id}/attach [post]
 // @Security     bearerAuth
 func (h *Handler) AttachSession(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -419,10 +386,6 @@ func (h *Handler) AttachSession(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id}/detach [post]
 // @Security     bearerAuth
 func (h *Handler) DetachSession(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -454,10 +417,6 @@ func (h *Handler) DetachSession(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/{id}/snapshot [post]
 // @Security     bearerAuth
 func (h *Handler) CreateSnapshot(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -489,10 +448,6 @@ func (h *Handler) CreateSnapshot(c echo.Context) error {
 // @Router       /api/v1/agent/sandboxes/from-snapshot [post]
 // @Security     bearerAuth
 func (h *Handler) CreateFromSnapshot(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	var req CreateFromSnapshotRequest
 	if err := c.Bind(&req); err != nil {

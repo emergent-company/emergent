@@ -45,6 +45,7 @@ type AutoProvisioner struct {
 }
 
 // NewAutoProvisioner creates a new auto-provisioning service.
+// imageResolver is optional — if nil, falls back to ResolveProviderType().
 func NewAutoProvisioner(
 	service *Service,
 	orchestrator *Orchestrator,
@@ -52,21 +53,17 @@ func NewAutoProvisioner(
 	setupExec *SetupExecutor,
 	warmPool *WarmPool,
 	log *slog.Logger,
+	imageResolver ImageResolver,
 ) *AutoProvisioner {
 	return &AutoProvisioner{
-		service:      service,
-		orchestrator: orchestrator,
-		checkoutSvc:  checkoutSvc,
-		setupExec:    setupExec,
-		warmPool:     warmPool,
-		log:          log.With("component", "workspace-auto-provisioner"),
+		service:       service,
+		orchestrator:  orchestrator,
+		checkoutSvc:   checkoutSvc,
+		setupExec:     setupExec,
+		warmPool:      warmPool,
+		imageResolver: imageResolver,
+		log:           log.With("component", "workspace-auto-provisioner"),
 	}
-}
-
-// SetImageResolver injects the image catalog resolver.
-// Called by the workspaceimages module during fx startup.
-func (ap *AutoProvisioner) SetImageResolver(resolver ImageResolver) {
-	ap.imageResolver = resolver
 }
 
 // WaitForImageReady checks whether the sandbox image required by the config is ready.

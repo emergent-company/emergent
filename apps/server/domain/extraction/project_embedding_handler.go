@@ -34,10 +34,7 @@ func NewProjectEmbeddingHandler(
 
 // requireProjectAdmin checks that the authenticated user is a project_admin for the given project.
 func (h *ProjectEmbeddingHandler) requireProjectAdmin(c echo.Context, projectID string) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	role, err := h.apitokenSvc.GetUserProjectRole(c.Request().Context(), projectID, user.ID)
 	if err != nil {
 		return apperror.NewInternal("check project role", err)

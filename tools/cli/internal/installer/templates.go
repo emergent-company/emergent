@@ -16,6 +16,10 @@ const (
 	// PostgresMajorVersion is the expected major version after install/upgrade.
 	// Used by the upgrade flow to decide whether pg_upgrade is needed.
 	PostgresMajorVersion = 17
+
+	// WorkspaceBaseImage is the default agent sandbox base image (alpine + dev tools).
+	// Must match docker/workspace-base.Dockerfile, which the publish workflow builds.
+	WorkspaceBaseImage = "memory-workspace:latest"
 )
 
 // GetDockerComposeTemplate returns the docker-compose template with :latest tag.
@@ -281,6 +285,41 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+`
+}
+
+// GetWorkspaceBaseDockerfile returns the Dockerfile used to build the
+// memory-workspace base sandbox image. Content mirrors docker/workspace-base.Dockerfile
+// (kept in sync manually; the file is used by the ghcr publish workflow).
+func GetWorkspaceBaseDockerfile() string {
+	return `FROM alpine:3.19
+
+# Install essential dev tools and AI agent-friendly utilities
+RUN apk add --no-cache \
+    bash \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    jq \
+    ripgrep \
+    grep \
+    sed \
+    gawk \
+    findutils \
+    tree \
+    tar \
+    gzip \
+    unzip \
+    build-base \
+    && rm -rf /var/cache/apk/*
+
+# Create workspace directory
+RUN mkdir -p /workspace
+WORKDIR /workspace
+
+# Keep container running
+CMD ["sleep", "infinity"]
 `
 }
 

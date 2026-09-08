@@ -1032,17 +1032,17 @@ func TestRememberAskPolicy_PausesForConfirmation(t *testing.T) {
 		}
 		data, _ := runBody["data"].(map[string]any)
 		status, _ := data["status"].(string)
-		if status == "paused" || status == "input-required" || status == "error" || status == "success" {
+		if status == "input-required" || status == "completed" || status == "failed" {
 			finalStatus = status
 			break
 		}
 	}
 
 	t.Logf("remember ask run %s final status: %s", runID, finalStatus)
-	if finalStatus != "paused" && finalStatus != "input-required" && finalStatus != "success" {
+	if finalStatus != "input-required" && finalStatus != "completed" {
 		t.Fatalf("expected run to pause for tool confirmation or complete; got status=%q", finalStatus)
 	}
-	if finalStatus == "success" {
+	if finalStatus == "completed" {
 		t.Log("⚠ run completed without pausing — LLM chose not to call finalize-discovery (ask policy not exercised)")
 	}
 }

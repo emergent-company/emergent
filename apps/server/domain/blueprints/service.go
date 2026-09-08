@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"time"
 
+	"go.uber.org/fx"
+
 	"github.com/emergent-company/emergent.memory/domain/agents"
 	"github.com/emergent-company/emergent.memory/domain/graph"
 	"github.com/emergent-company/emergent.memory/domain/schemas"
@@ -16,6 +18,16 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
 
+// AgentRepo is the subset of agents.Repository used by blueprint apply.
+// Satisfied by *agents.Repository via fx injection; defined as an interface so
+// the dependency can be optional (nil-safe) when the agents feature is disabled.
+type AgentRepo interface {
+	FindDefinitionByName(ctx context.Context, projectID, name string) (*agents.AgentDefinition, error)
+	UpdateDefinition(ctx context.Context, def *agents.AgentDefinition) error
+	CreateDefinition(ctx context.Context, def *agents.AgentDefinition) error
+	DeleteDefinition(ctx context.Context, id string) error
+}
+
 // Service handles business logic for blueprints
 type Service struct {
 	repo        *Repository
@@ -23,27 +35,36 @@ type Service struct {
 	schemasRepo *schemas.Repository
 	skillsRepo  *skills.Repository
 	graphSvc    *graph.Service
-	agentRepo   *agents.Repository // optional; set via SetAgentRepo
+	agentRepo   AgentRepo // optional; nil when the agents feature is off
 	log         *slog.Logger
 }
 
-// NewService creates a new blueprints service
-func NewService(repo *Repository, schemasSvc *schemas.Service, schemasRepo *schemas.Repository, skillsRepo *skills.Repository, graphSvc *graph.Service, log *slog.Logger) *Service {
-	return &Service{
-		repo:        repo,
-		schemasSvc:  schemasSvc,
-		schemasRepo: schemasRepo,
-		skillsRepo:  skillsRepo,
-		graphSvc:    graphSvc,
-		log:         log.With(logger.Scope("blueprints.svc")),
-	}
+// ServiceParams bundles dependencies for NewService.
+type ServiceParams struct {
+	fx.In
+
+	Repo        *Repository
+	SchemasSvc  *schemas.Service
+	SchemasRepo *schemas.Repository
+	SkillsRepo  *skills.Repository
+	GraphSvc    *graph.Service
+	Log         *slog.Logger
+
+	// Optional — only wired when the agents feature is enabled.
+	AgentRepo AgentRepo `optional:"true"`
 }
 
-// SetAgentRepo injects the agents repository (optional dependency, wired only
-// when the agents feature is enabled). When unset, the agents step of Apply is
-// skipped with a warning.
-func (s *Service) SetAgentRepo(ar *agents.Repository) {
-	s.agentRepo = ar
+// NewService creates a new blueprints service
+func NewService(p ServiceParams) *Service {
+	return &Service{
+		repo:        p.Repo,
+		schemasSvc:  p.SchemasSvc,
+		schemasRepo: p.SchemasRepo,
+		skillsRepo:  p.SkillsRepo,
+		graphSvc:    p.GraphSvc,
+		agentRepo:   p.AgentRepo,
+		log:         p.Log.With(logger.Scope("blueprints.svc")),
+	}
 }
 
 // guardMutable rejects mutations of global blueprints. Global (project_id IS
@@ -153,14 +174,12 @@ func (s *Service) UpdateBlueprint(ctx context.Context, projectID, id string, req
 // PublishBlueprint transitions a draft to published, computing a sha256
 // checksum over the raw JSON manifest bytes. The checksum is a content hash
 // of the manifest for future apply/drift comparison; it is not verified on
-// read (tamper detection is out of scope for this phase). Only the caller's
-// own private drafts can be published — global blueprints are immutable.
+// read (tamper detection is out of scope for this phase). Allowed on global
+// blueprints — the gateway's built-in seed flow creates a global draft then
+// publishes it.
 func (s *Service) PublishBlueprint(ctx context.Context, projectID, id string) (*Blueprint, error) {
 	bp, err := s.repo.GetByID(ctx, projectID, id)
 	if err != nil {
-		return nil, err
-	}
-	if err := guardMutable(bp); err != nil {
 		return nil, err
 	}
 	if bp.Status != StatusDraft {
@@ -182,14 +201,12 @@ func (s *Service) PublishBlueprint(ctx context.Context, projectID, id string) (*
 	return bp, nil
 }
 
-// DeprecateBlueprint transitions the caller's own private blueprint to
-// deprecated (from any status). Global blueprints are immutable.
+// DeprecateBlueprint transitions any blueprint to deprecated (from any
+// status). Allowed on global blueprints — deprecation is a lifecycle
+// transition, not a content mutation.
 func (s *Service) DeprecateBlueprint(ctx context.Context, projectID, id string) (*Blueprint, error) {
 	bp, err := s.repo.GetByID(ctx, projectID, id)
 	if err != nil {
-		return nil, err
-	}
-	if err := guardMutable(bp); err != nil {
 		return nil, err
 	}
 	if bp.Status == StatusDeprecated {

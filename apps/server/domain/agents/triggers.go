@@ -198,7 +198,11 @@ func (ts *TriggerService) registerCronTrigger(agent *Agent) error {
 	agentID := agent.ID
 	projectID := agent.ProjectID
 
-	err := ts.scheduler.AddCronTask(taskName, agent.CronSchedule, func(ctx context.Context) error {
+	// The scheduler uses seconds-precision (6-field) cron, while agent
+	// schedules are standard 5-field expressions (validated above). Prefix a
+	// zero seconds field so the scheduler parses it.
+	schedule := "0 " + agent.CronSchedule
+	err := ts.scheduler.AddCronTask(taskName, schedule, func(ctx context.Context) error {
 		return ts.executeTriggeredAgent(ctx, agentID, projectID)
 	})
 	if err != nil {

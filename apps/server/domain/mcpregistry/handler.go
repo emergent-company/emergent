@@ -32,10 +32,7 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/admin/mcp-servers [get]
 // @Security     bearerAuth
 func (h *Handler) ListServers(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -72,10 +69,7 @@ func (h *Handler) ListServers(c echo.Context) error {
 // @Router       /api/admin/mcp-servers/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -110,10 +104,7 @@ func (h *Handler) GetServer(c echo.Context) error {
 // @Router       /api/admin/mcp-servers [post]
 // @Security     bearerAuth
 func (h *Handler) CreateServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -147,10 +138,7 @@ func (h *Handler) CreateServer(c echo.Context) error {
 // @Router       /api/admin/mcp-servers/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -189,10 +177,7 @@ func (h *Handler) UpdateServer(c echo.Context) error {
 // @Router       /api/admin/mcp-servers/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -215,10 +200,7 @@ func (h *Handler) DeleteServer(c echo.Context) error {
 
 // ListServerTools handles GET /api/admin/mcp-servers/:id/tools
 func (h *Handler) ListServerTools(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	serverID := c.Param("id")
 	if serverID == "" {
@@ -257,10 +239,6 @@ func (h *Handler) ListServerTools(c echo.Context) error {
 
 // ToggleTool handles PATCH /api/admin/mcp-servers/:id/tools/:toolId
 func (h *Handler) ToggleTool(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	toolID := c.Param("toolId")
 	if toolID == "" {
@@ -294,10 +272,7 @@ func (h *Handler) ToggleTool(c echo.Context) error {
 // the server advertises. Always returns 200 with the inspect result — connection
 // errors are reported in the response body (status: "error"), not as HTTP errors.
 func (h *Handler) InspectServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -327,10 +302,7 @@ func (h *Handler) InspectServer(c echo.Context) error {
 //   - Manual sync: If the request body contains an array of tool definitions,
 //     syncs those tools directly (useful for testing or when auto-discover fails).
 func (h *Handler) SyncTools(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -402,10 +374,7 @@ func (h *Handler) SyncTools(c echo.Context) error {
 // endpoint never surfaces the internal "builtin" MCPServer record — it exposes
 // only the flat tool list.
 func (h *Handler) ListBuiltinTools(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}
@@ -423,10 +392,6 @@ func (h *Handler) ListBuiltinTools(c echo.Context) error {
 // Enables/disables a built-in tool or updates its runtime config for the
 // current project. Accepts the same body as PATCH /api/admin/mcp-servers/:id/tools/:toolId.
 func (h *Handler) UpdateBuiltinTool(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	toolID := c.Param("toolId")
 	if toolID == "" {
@@ -459,10 +424,6 @@ func (h *Handler) UpdateBuiltinTool(c echo.Context) error {
 // SearchRegistry handles GET /api/admin/mcp-registry/search
 // Query params: q (search query), limit (int), cursor (pagination)
 func (h *Handler) SearchRegistry(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	query := c.QueryParam("q")
 	limitStr := c.QueryParam("limit")
@@ -486,10 +447,6 @@ func (h *Handler) SearchRegistry(c echo.Context) error {
 // GetRegistryServer handles GET /api/admin/mcp-registry/servers/:name
 // The name parameter is the registry server name (URL-encoded, e.g. "io.github.github%2Fgithub-mcp-server").
 func (h *Handler) GetRegistryServer(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	name := c.Param("name")
 	if name == "" {
@@ -506,10 +463,7 @@ func (h *Handler) GetRegistryServer(c echo.Context) error {
 
 // InstallFromRegistry handles POST /api/admin/mcp-registry/install
 func (h *Handler) InstallFromRegistry(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.NewBadRequest("X-Project-ID header is required")
 	}

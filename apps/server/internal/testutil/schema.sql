@@ -3,12 +3,13 @@
 --
 
 
--- Dumped from database version 16.11 (Debian 16.11-1.pgdg12+1)
--- Dumped by pg_dump version 18.1
+-- Dumped from database version 17.10 (Debian 17.10-1.pgdg12+1)
+-- Dumped by pg_dump version 18.6
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -442,7 +443,9 @@ CREATE TABLE kb.agent_definitions (
     auto_load_skills boolean DEFAULT false NOT NULL,
     max_session_events integer,
     tool_policies jsonb DEFAULT '{}'::jsonb NOT NULL,
-    enabled boolean DEFAULT true NOT NULL
+    enabled boolean DEFAULT true NOT NULL,
+    default_tool_policy text DEFAULT 'allow'::text NOT NULL,
+    source_blueprint_id uuid
 );
 
 
@@ -791,6 +794,27 @@ COMMENT ON COLUMN kb.agent_sandboxes.mcp_config IS 'MCP server configuration inc
 
 
 --
+-- Name: agent_tool_approvals; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.agent_tool_approvals (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    agent_id uuid NOT NULL,
+    question_id uuid NOT NULL,
+    tool_name character varying(255) NOT NULL,
+    args_summary jsonb DEFAULT '{}'::jsonb NOT NULL,
+    decision character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    message text,
+    decided_by uuid,
+    decided_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
 -- Name: agent_webhook_hooks; Type: TABLE; Schema: kb; Owner: -
 --
 
@@ -830,8 +854,8 @@ CREATE TABLE kb.agents (
     capabilities jsonb,
     project_id uuid NOT NULL,
     consecutive_failures integer DEFAULT 0 NOT NULL,
-    disabled_reason text,
     agent_definition_id uuid,
+    disabled_reason text,
     CONSTRAINT chk_agents_execution_mode CHECK ((execution_mode = ANY (ARRAY['suggest'::text, 'execute'::text, 'hybrid'::text]))),
     CONSTRAINT chk_agents_trigger_type CHECK ((trigger_type = ANY (ARRAY['schedule'::text, 'manual'::text, 'reaction'::text])))
 );
@@ -951,6 +975,56 @@ COMMENT ON COLUMN kb.backups.change_window IS 'For incremental backups: {from: t
 
 
 --
+-- Name: blueprint_applications; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.blueprint_applications (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    blueprint_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    version text NOT NULL,
+    checksum text DEFAULT ''::text NOT NULL,
+    applied_by uuid,
+    status text DEFAULT 'applied'::text NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: blueprint_pack_claims; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.blueprint_pack_claims (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    blueprint_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    schema_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: blueprints; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.blueprints (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    name text NOT NULL,
+    version text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    author text DEFAULT ''::text NOT NULL,
+    status text DEFAULT 'draft'::text NOT NULL,
+    manifest jsonb DEFAULT '{}'::jsonb NOT NULL,
+    checksum text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    project_id uuid
+);
+
+
+--
 -- Name: branch_lineage; Type: TABLE; Schema: kb; Owner: -
 --
 
@@ -968,7 +1042,7 @@ CREATE TABLE kb.branch_lineage (
 
 CREATE TABLE kb.branches (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    project_id uuid,
+    project_id uuid NOT NULL,
     name text NOT NULL,
     parent_branch_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -1892,6 +1966,13 @@ CREATE TABLE kb.org_model_config (
 
 
 --
+-- Name: TABLE org_model_config; Type: COMMENT; Schema: kb; Owner: -
+--
+
+COMMENT ON TABLE kb.org_model_config IS 'DEPRECATED: org-level model config. All model config is now per-project via kb.project_model_config.';
+
+
+--
 -- Name: org_provider_configs; Type: TABLE; Schema: kb; Owner: -
 --
 
@@ -1909,6 +1990,13 @@ CREATE TABLE kb.org_provider_configs (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     base_url text
 );
+
+
+--
+-- Name: TABLE org_provider_configs; Type: COMMENT; Schema: kb; Owner: -
+--
+
+COMMENT ON TABLE kb.org_provider_configs IS 'DEPRECATED: org-level provider credentials. All provider config is now per-project via kb.project_provider_configs.';
 
 
 --
@@ -1995,6 +2083,25 @@ CREATE TABLE kb.product_versions (
     description text,
     base_product_version_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: project_custom_pricing; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.project_custom_pricing (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid NOT NULL,
+    provider character varying(50) NOT NULL,
+    model character varying(255) NOT NULL,
+    text_input_price numeric(12,8) DEFAULT 0 NOT NULL,
+    image_input_price numeric(12,8) DEFAULT 0 NOT NULL,
+    video_input_price numeric(12,8) DEFAULT 0 NOT NULL,
+    audio_input_price numeric(12,8) DEFAULT 0 NOT NULL,
+    output_price numeric(12,8) DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2138,7 +2245,8 @@ CREATE TABLE kb.project_schemas (
     customizations jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    removed_at timestamp with time zone
+    removed_at timestamp with time zone,
+    source_blueprint_id uuid
 );
 
 
@@ -2270,6 +2378,51 @@ CREATE TABLE kb.release_notifications (
 
 
 --
+-- Name: restores; Type: TABLE; Schema: kb; Owner: -
+--
+
+CREATE TABLE kb.restores (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    backup_id uuid NOT NULL,
+    mode text NOT NULL,
+    source_project_id uuid,
+    target_project_id uuid,
+    status text DEFAULT 'pending'::text NOT NULL,
+    progress integer DEFAULT 0 NOT NULL,
+    error_message text,
+    stats jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    completed_at timestamp with time zone,
+    CONSTRAINT restores_mode_check CHECK ((mode = ANY (ARRAY['overwrite'::text, 'clone'::text]))),
+    CONSTRAINT restores_progress_check CHECK (((progress >= 0) AND (progress <= 100))),
+    CONSTRAINT restores_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'completed'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: TABLE restores; Type: COMMENT; Schema: kb; Owner: -
+--
+
+COMMENT ON TABLE kb.restores IS 'Tracks project backup restore jobs (overwrite and clone modes)';
+
+
+--
+-- Name: COLUMN restores.mode; Type: COMMENT; Schema: kb; Owner: -
+--
+
+COMMENT ON COLUMN kb.restores.mode IS 'Restore mode: overwrite (same project) or clone (new project)';
+
+
+--
+-- Name: COLUMN restores.stats; Type: COMMENT; Schema: kb; Owner: -
+--
+
+COMMENT ON COLUMN kb.restores.stats IS 'Per-table restore statistics: {documents: 150, chunks: 3000, ...}';
+
+
+--
 -- Name: sandbox_images; Type: TABLE; Schema: kb; Owner: -
 --
 
@@ -2346,7 +2499,8 @@ CREATE TABLE kb.schema_migration_jobs (
     error text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     started_at timestamp with time zone,
-    completed_at timestamp with time zone
+    completed_at timestamp with time zone,
+    auto_uninstall boolean DEFAULT false NOT NULL
 );
 
 
@@ -2964,6 +3118,14 @@ ALTER TABLE ONLY kb.agent_sandboxes
 
 
 --
+-- Name: agent_tool_approvals agent_tool_approvals_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.agent_tool_approvals
+    ADD CONSTRAINT agent_tool_approvals_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: agent_webhook_hooks agent_webhook_hooks_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
 --
 
@@ -2985,6 +3147,46 @@ ALTER TABLE ONLY kb.agents
 
 ALTER TABLE ONLY kb.backups
     ADD CONSTRAINT backups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blueprint_applications blueprint_applications_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_applications
+    ADD CONSTRAINT blueprint_applications_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blueprint_applications blueprint_applications_project_blueprint_key; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_applications
+    ADD CONSTRAINT blueprint_applications_project_blueprint_key UNIQUE (project_id, blueprint_id);
+
+
+--
+-- Name: blueprint_pack_claims blueprint_pack_claims_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_pack_claims
+    ADD CONSTRAINT blueprint_pack_claims_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blueprint_pack_claims blueprint_pack_claims_project_blueprint_schema_key; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_pack_claims
+    ADD CONSTRAINT blueprint_pack_claims_project_blueprint_schema_key UNIQUE (project_id, blueprint_id, schema_id);
+
+
+--
+-- Name: blueprints blueprints_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprints
+    ADD CONSTRAINT blueprints_pkey PRIMARY KEY (id);
 
 
 --
@@ -3204,6 +3406,14 @@ ALTER TABLE ONLY kb.organization_custom_pricing
 
 
 --
+-- Name: project_custom_pricing project_custom_pricing_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.project_custom_pricing
+    ADD CONSTRAINT project_custom_pricing_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: project_edge_schema_registry project_edge_schema_registry_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
 --
 
@@ -3356,6 +3566,14 @@ ALTER TABLE ONLY kb.release_notifications
 
 
 --
+-- Name: restores restores_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.restores
+    ADD CONSTRAINT restores_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: sandbox_images sandbox_images_pkey; Type: CONSTRAINT; Schema: kb; Owner: -
 --
 
@@ -3425,6 +3643,14 @@ ALTER TABLE ONLY kb.tasks
 
 ALTER TABLE ONLY kb.organization_custom_pricing
     ADD CONSTRAINT uq_org_custom_pricing UNIQUE (org_id, provider, model);
+
+
+--
+-- Name: project_custom_pricing uq_project_custom_pricing; Type: CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.project_custom_pricing
+    ADD CONSTRAINT uq_project_custom_pricing UNIQUE (project_id, provider, model);
 
 
 --
@@ -3709,10 +3935,6 @@ CREATE INDEX "IDX_d841de45a719fe1f35213d7920" ON kb.chunks USING btree (document
 
 CREATE INDEX "IDX_df895a2e1799c53ef660d0aae6" ON kb.graph_embedding_jobs USING btree (object_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uidx_graph_embedding_jobs_active
-    ON kb.graph_embedding_jobs (object_id)
-    WHERE status IN ('pending', 'processing');
-
 
 --
 -- Name: IDX_e156b298c20873e14c362e789b; Type: INDEX; Schema: kb; Owner: -
@@ -3834,6 +4056,27 @@ CREATE INDEX "IDX_schema_studio_sessions_user_id" ON kb.schema_studio_sessions U
 
 
 --
+-- Name: blueprints_name_version_global_key; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE UNIQUE INDEX blueprints_name_version_global_key ON kb.blueprints USING btree (name, version) WHERE (project_id IS NULL);
+
+
+--
+-- Name: blueprints_name_version_project_key; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE UNIQUE INDEX blueprints_name_version_project_key ON kb.blueprints USING btree (name, version, project_id) WHERE (project_id IS NOT NULL);
+
+
+--
+-- Name: blueprints_project_id_idx; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX blueprints_project_id_idx ON kb.blueprints USING btree (project_id);
+
+
+--
 -- Name: idx_acp_run_events_run_id_created; Type: INDEX; Schema: kb; Owner: -
 --
 
@@ -3894,6 +4137,13 @@ CREATE INDEX idx_agent_definitions_project_default ON kb.agent_definitions USING
 --
 
 CREATE UNIQUE INDEX idx_agent_definitions_project_name ON kb.agent_definitions USING btree (project_id, name);
+
+
+--
+-- Name: idx_agent_definitions_source_blueprint; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_agent_definitions_source_blueprint ON kb.agent_definitions USING btree (project_id, source_blueprint_id);
 
 
 --
@@ -4065,6 +4315,27 @@ CREATE INDEX idx_agent_sandboxes_status ON kb.agent_sandboxes USING btree (statu
 
 
 --
+-- Name: idx_agent_tool_approvals_project_id; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_agent_tool_approvals_project_id ON kb.agent_tool_approvals USING btree (project_id);
+
+
+--
+-- Name: idx_agent_tool_approvals_question_id; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_agent_tool_approvals_question_id ON kb.agent_tool_approvals USING btree (question_id);
+
+
+--
+-- Name: idx_agent_tool_approvals_run_id; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_agent_tool_approvals_run_id ON kb.agent_tool_approvals USING btree (run_id);
+
+
+--
 -- Name: idx_agent_webhook_hooks_agent_id; Type: INDEX; Schema: kb; Owner: -
 --
 
@@ -4142,6 +4413,27 @@ CREATE INDEX idx_backups_status ON kb.backups USING btree (status) WHERE (delete
 
 
 --
+-- Name: idx_blueprint_applications_project; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_blueprint_applications_project ON kb.blueprint_applications USING btree (project_id);
+
+
+--
+-- Name: idx_blueprint_pack_claims_project_schema; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_blueprint_pack_claims_project_schema ON kb.blueprint_pack_claims USING btree (project_id, schema_id);
+
+
+--
+-- Name: idx_blueprints_name; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_blueprints_name ON kb.blueprints USING btree (name);
+
+
+--
 -- Name: idx_chat_conversations_acp_session_id; Type: INDEX; Schema: kb; Owner: -
 --
 
@@ -4160,10 +4452,6 @@ CREATE INDEX idx_chat_messages_conversation_history ON kb.chat_messages USING bt
 --
 
 CREATE INDEX idx_chunk_embedding_jobs_chunk_id ON kb.chunk_embedding_jobs USING btree (chunk_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uidx_chunk_embedding_jobs_active
-    ON kb.chunk_embedding_jobs (chunk_id)
-    WHERE status IN ('pending', 'processing');
 
 
 --
@@ -4487,10 +4775,6 @@ CREATE UNIQUE INDEX idx_graph_objects_upsert_namespace ON kb.graph_objects USING
 
 CREATE INDEX idx_graph_rel_emb_jobs_relationship_id ON kb.graph_relationship_embedding_jobs USING btree (relationship_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uidx_graph_rel_embedding_jobs_active
-    ON kb.graph_relationship_embedding_jobs (relationship_id)
-    WHERE status IN ('pending', 'processing');
-
 
 --
 -- Name: idx_graph_rel_emb_jobs_scheduled; Type: INDEX; Schema: kb; Owner: -
@@ -4668,6 +4952,13 @@ CREATE INDEX idx_orgs_deleted_at ON kb.orgs USING btree (deleted_at) WHERE (dele
 
 
 --
+-- Name: idx_project_custom_pricing_project_id; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_project_custom_pricing_project_id ON kb.project_custom_pricing USING btree (project_id);
+
+
+--
 -- Name: idx_project_edge_schema_registry_project_id; Type: INDEX; Schema: kb; Owner: -
 --
 
@@ -4714,6 +5005,13 @@ CREATE INDEX idx_project_journal_notes_project ON kb.project_journal_notes USING
 --
 
 CREATE INDEX idx_project_journal_project_created ON kb.project_journal USING btree (project_id, created_at DESC);
+
+
+--
+-- Name: idx_project_schemas_source_blueprint; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_project_schemas_source_blueprint ON kb.project_schemas USING btree (project_id, source_blueprint_id);
 
 
 --
@@ -4798,6 +5096,27 @@ CREATE INDEX idx_release_recipients_release ON kb.release_notification_recipient
 --
 
 CREATE INDEX idx_release_recipients_user ON kb.release_notification_recipients USING btree (user_id);
+
+
+--
+-- Name: idx_restores_backup; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_restores_backup ON kb.restores USING btree (backup_id);
+
+
+--
+-- Name: idx_restores_org; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_restores_org ON kb.restores USING btree (organization_id);
+
+
+--
+-- Name: idx_restores_status; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE INDEX idx_restores_status ON kb.restores USING btree (status);
 
 
 --
@@ -4931,6 +5250,27 @@ CREATE UNIQUE INDEX idx_user_recent_items_unique_resource ON kb.user_recent_item
 --
 
 CREATE INDEX idx_user_recent_items_user_project_accessed ON kb.user_recent_items USING btree (user_id, project_id, accessed_at DESC);
+
+
+--
+-- Name: uidx_chunk_embedding_jobs_active; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE UNIQUE INDEX uidx_chunk_embedding_jobs_active ON kb.chunk_embedding_jobs USING btree (chunk_id) WHERE (status = ANY (ARRAY['pending'::text, 'processing'::text]));
+
+
+--
+-- Name: uidx_graph_embedding_jobs_active; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE UNIQUE INDEX uidx_graph_embedding_jobs_active ON kb.graph_embedding_jobs USING btree (object_id) WHERE (status = ANY (ARRAY['pending'::text, 'processing'::text]));
+
+
+--
+-- Name: uidx_graph_rel_embedding_jobs_active; Type: INDEX; Schema: kb; Owner: -
+--
+
+CREATE UNIQUE INDEX uidx_graph_rel_embedding_jobs_active ON kb.graph_relationship_embedding_jobs USING btree (relationship_id) WHERE (status = ANY (ARRAY['pending'::text, 'processing'::text]));
 
 
 --
@@ -5425,6 +5765,30 @@ ALTER TABLE ONLY kb.backups
 
 
 --
+-- Name: blueprint_applications blueprint_applications_blueprint_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_applications
+    ADD CONSTRAINT blueprint_applications_blueprint_id_fkey FOREIGN KEY (blueprint_id) REFERENCES kb.blueprints(id);
+
+
+--
+-- Name: blueprint_pack_claims blueprint_pack_claims_blueprint_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_pack_claims
+    ADD CONSTRAINT blueprint_pack_claims_blueprint_id_fkey FOREIGN KEY (blueprint_id) REFERENCES kb.blueprints(id);
+
+
+--
+-- Name: blueprint_pack_claims blueprint_pack_claims_schema_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.blueprint_pack_claims
+    ADD CONSTRAINT blueprint_pack_claims_schema_id_fkey FOREIGN KEY (schema_id) REFERENCES kb.graph_schemas(id);
+
+
+--
 -- Name: chat_conversations chat_conversations_acp_session_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
 --
 
@@ -5437,7 +5801,7 @@ ALTER TABLE ONLY kb.chat_conversations
 --
 
 ALTER TABLE ONLY kb.chat_conversations
-    ADD CONSTRAINT chat_conversations_agent_definition_fk FOREIGN KEY (agent_definition_id) REFERENCES kb.agent_definitions(id);
+    ADD CONSTRAINT chat_conversations_agent_definition_fk FOREIGN KEY (agent_definition_id) REFERENCES kb.agent_definitions(id) ON DELETE SET NULL;
 
 
 --
@@ -5705,6 +6069,14 @@ ALTER TABLE ONLY kb.orgs
 
 
 --
+-- Name: project_custom_pricing project_custom_pricing_project_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.project_custom_pricing
+    ADD CONSTRAINT project_custom_pricing_project_id_fkey FOREIGN KEY (project_id) REFERENCES kb.projects(id) ON DELETE CASCADE;
+
+
+--
 -- Name: project_edge_schema_registry project_edge_schema_registry_project_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
 --
 
@@ -5822,6 +6194,30 @@ ALTER TABLE ONLY kb.release_notification_recipients
 
 ALTER TABLE ONLY kb.release_notifications
     ADD CONSTRAINT release_notifications_created_by_fkey FOREIGN KEY (created_by) REFERENCES core.user_profiles(id);
+
+
+--
+-- Name: restores restores_backup_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.restores
+    ADD CONSTRAINT restores_backup_id_fkey FOREIGN KEY (backup_id) REFERENCES kb.backups(id) ON DELETE CASCADE;
+
+
+--
+-- Name: restores restores_created_by_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.restores
+    ADD CONSTRAINT restores_created_by_fkey FOREIGN KEY (created_by) REFERENCES core.user_profiles(id);
+
+
+--
+-- Name: restores restores_organization_id_fkey; Type: FK CONSTRAINT; Schema: kb; Owner: -
+--
+
+ALTER TABLE ONLY kb.restores
+    ADD CONSTRAINT restores_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES kb.orgs(id) ON DELETE CASCADE;
 
 
 --

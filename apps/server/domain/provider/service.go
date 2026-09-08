@@ -335,15 +335,20 @@ func (s *CredentialService) UpsertProjectConfig(ctx context.Context, projectID s
 
 	// When the caller omits credential fields (e.g. only updating models or
 	// baseURL), reuse the previously stored credential instead of requiring
-	// the API key / service account on every upsert.
-	if s.needsStoredCredential(provider, req) {
+	// the API key / service account on every upsert. Model selections are
+	// reused too, so re-saving credentials/baseURL never silently re-auto-selects
+	// a different model from the (possibly larger) synced catalog.
+	if s.needsStoredCredential(provider, req) || req.GenerativeModel == "" || req.EmbeddingModel == "" {
 		existing, err := s.repo.GetProjectProviderConfig(ctx, projectID, provider)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get existing provider config: %w", err)
 		}
-		if err := s.reuseStoredCredential(provider, existing, &req); err != nil {
-			return nil, err
+		if s.needsStoredCredential(provider, req) {
+			if err := s.reuseStoredCredential(provider, existing, &req); err != nil {
+				return nil, err
+			}
 		}
+		s.reuseStoredModels(existing, &req)
 	}
 
 	plaintext, err := s.extractPlaintext(provider, req)
@@ -556,6 +561,22 @@ func (s *CredentialService) reuseStoredCredential(provider ProviderType, existin
 		}
 	}
 	return nil
+}
+
+// reuseStoredModels restores the previously stored model selections when the
+// request omits them. The settings UI sends only credentials + base_url, so
+// without this the upsert would re-auto-select a model from the synced catalog
+// and clobber the user's prior choice.
+func (s *CredentialService) reuseStoredModels(existing *ProjectProviderConfig, req *UpsertProviderConfigRequest) {
+	if existing == nil {
+		return
+	}
+	if req.GenerativeModel == "" {
+		req.GenerativeModel = existing.GenerativeModel
+	}
+	if req.EmbeddingModel == "" {
+		req.EmbeddingModel = existing.EmbeddingModel
+	}
 }
 
 // extractPlaintext returns the credential bytes to encrypt from the request.

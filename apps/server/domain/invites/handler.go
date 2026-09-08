@@ -33,10 +33,7 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 // @Router       /api/invites/pending [get]
 // @Security     bearerAuth
 func (h *Handler) ListPending(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	invites, err := h.svc.ListPendingForUser(c.Request().Context(), user.ID)
 	if err != nil {
@@ -58,11 +55,6 @@ func (h *Handler) ListPending(c echo.Context) error {
 // @Router       /api/projects/{projectId}/invites [get]
 // @Security     bearerAuth
 func (h *Handler) ListByProject(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	projectID := c.Param("projectId")
 	if projectID == "" {
 		return apperror.ErrBadRequest.WithMessage("project_id is required")
@@ -91,10 +83,7 @@ func (h *Handler) ListByProject(c echo.Context) error {
 // @Router       /api/invites [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req CreateInviteRequest
 	if err := c.Bind(&req); err != nil {
@@ -131,10 +120,7 @@ func (h *Handler) Create(c echo.Context) error {
 // @Router       /api/invites/accept [post]
 // @Security     bearerAuth
 func (h *Handler) Accept(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	var req AcceptInviteRequest
 	if err := c.Bind(&req); err != nil {
@@ -200,10 +186,7 @@ func (h *Handler) AcceptViaLink(c echo.Context) error {
 // @Router       /api/invites/{id}/decline [post]
 // @Security     bearerAuth
 func (h *Handler) Decline(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	inviteID := c.Param("id")
 	if inviteID == "" {
@@ -230,11 +213,6 @@ func (h *Handler) Decline(c echo.Context) error {
 // @Router       /api/invites/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) Delete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
-
 	inviteID := c.Param("id")
 	if inviteID == "" {
 		return apperror.ErrBadRequest.WithMessage("invite_id is required")

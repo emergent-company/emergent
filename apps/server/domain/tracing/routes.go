@@ -11,6 +11,9 @@ import (
 func RegisterRoutes(e *echo.Echo, h *Handler, authMiddleware *auth.Middleware) {
 	g := e.Group("/api/traces")
 	g.Use(authMiddleware.RequireAuth())
+	// Trace data exposes internal spans (including LLM prompts/attributes), so
+	// restrict to admin read scope rather than any authenticated user.
+	g.Use(authMiddleware.RequireScopes("admin:read"))
 	g.GET("", h.Search)
 	g.GET("/search", h.Search) // also accept /api/traces/search for explicitness
 	g.GET("/:id", h.GetTrace)

@@ -6,17 +6,20 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"time"
 
+	"github.com/emergent-company/emergent.memory/pkg/pgutils"
 	"github.com/uptrace/bun"
 )
 
-// Exporter handles exporting database data to NDJSON format
+// Exporter handles exporting database data to NDJSON format.
 type Exporter struct {
 	db  *bun.DB
 	log *slog.Logger
 }
 
-// NewExporter creates a new database exporter
+// NewExporter creates a new database exporter.
 func NewExporter(db *bun.DB, log *slog.Logger) *Exporter {
 	return &Exporter{
 		db:  db,
@@ -24,149 +27,282 @@ func NewExporter(db *bun.DB, log *slog.Logger) *Exporter {
 	}
 }
 
-// ExportOptions configures what data to export
+// ExportOptions configures what data to export.
 type ExportOptions struct {
 	ProjectID      string
 	IncludeChat    bool
+	IncludeJournal bool
 	IncludeDeleted bool
 }
 
-// ExportResult contains statistics about the export
-type ExportResult struct {
-	Documents          int `json:"documents"`
-	Chunks             int `json:"chunks"`
-	GraphObjects       int `json:"graphObjects"`
-	GraphRelationships int `json:"graphRelationships"`
-	ChatConversations  int `json:"chatConversations"`
-	ChatMessages       int `json:"chatMessages"`
-	ExtractionJobs     int `json:"extractionJobs"`
-	ProjectMemberships int `json:"projectMemberships"`
+// exportGate identifies the opt-in flag that gates a table's export.
+type exportGate string
+
+const (
+	gateNone    exportGate = ""
+	gateChat    exportGate = "chat"
+	gateJournal exportGate = "journal"
+)
+
+// tableConfig describes one NDJSON table export inside a backup archive.
+// The base table is always aliased as `t`; join tables use their own alias.
+type tableConfig struct {
+	name          string   // NDJSON filename (no extension), e.g. "documents"
+	table         string   // schema-qualified table, e.g. "kb.documents"; empty for derived files
+	join          string   // optional raw INNER JOIN clause (references alias t)
+	projectFilter string   // optional raw WHERE fragment scoping to a project (`?` binds ProjectID)
+	vectorColumns []string // columns of UDT vector/halfvec; cast ::text then parsed to []float32
+	deletedColumn string   // optional soft-delete column filtered out unless IncludeDeleted
+	extraWhere    string   // optional static WHERE fragment (no placeholders)
+	orderBy       string   // optional batching ORDER BY column; defaults to "id"
+	gate          exportGate
+	derived       bool // true when rows are derived in Go rather than streamed from `table`
 }
 
-// ExportDocuments exports documents to NDJSON format
-func (e *Exporter) ExportDocuments(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	query := e.db.NewSelect().
-		Table("kb.documents").
-		Where("project_id = ?", opts.ProjectID)
+// allExportTables returns the curated, ordered export surface (see openspec
+// change backup-restore, Decision 2). Order matters: it is the archive order
+// of the database/*.ndjson entries.
+func allExportTables() []tableConfig {
+	byProject := "t.project_id = ?"
 
-	if !opts.IncludeDeleted {
-		query = query.Where("deleted_at IS NULL")
+	return []tableConfig{
+		// --- Original eight ---
+		{name: "documents", table: "kb.documents", projectFilter: byProject, deletedColumn: "deleted_at"},
+		{name: "chunks", table: "kb.chunks", projectFilter: "d.project_id = ?", vectorColumns: []string{"embedding"},
+			join: "INNER JOIN kb.documents d ON d.id = t.document_id", deletedColumn: "deleted_at"},
+		{name: "graph_objects", table: "kb.graph_objects", projectFilter: byProject, vectorColumns: []string{"embedding_v2"}, deletedColumn: "deleted_at"},
+		{name: "graph_relationships", table: "kb.graph_relationships", projectFilter: byProject, vectorColumns: []string{"embedding"}, deletedColumn: "deleted_at"},
+		{name: "chat_conversations", table: "kb.chat_conversations", projectFilter: byProject, deletedColumn: "deleted_at", gate: gateChat},
+		{name: "chat_messages", table: "kb.chat_messages", projectFilter: "c.project_id = ?",
+			join: "INNER JOIN kb.chat_conversations c ON c.id = t.conversation_id", deletedColumn: "deleted_at", gate: gateChat},
+		{name: "object_extraction_jobs", table: "kb.object_extraction_jobs", projectFilter: byProject,
+			extraWhere: "t.status IN ('completed', 'failed')"},
+		{name: "project_memberships", table: "kb.project_memberships", projectFilter: byProject},
+
+		// --- Graph / schema state ---
+		{name: "object_type_schemas", table: "kb.object_type_schemas", projectFilter: byProject},
+		{name: "graph_schemas", table: "kb.graph_schemas", projectFilter: byProject},
+		{name: "project_schemas", table: "kb.project_schemas", projectFilter: byProject, deletedColumn: "removed_at"},
+		{name: "project_object_schema_registry", table: "kb.project_object_schema_registry", projectFilter: byProject},
+		{name: "project_edge_schema_registry", table: "kb.project_edge_schema_registry", projectFilter: byProject},
+		{name: "schema_migration_jobs", table: "kb.schema_migration_jobs", projectFilter: byProject},
+		{name: "schema_migration_runs", table: "kb.schema_migration_runs", projectFilter: byProject},
+
+		// --- Branches (branch_lineage is re-derived, not streamed) ---
+		{name: "branches", table: "kb.branches", projectFilter: byProject},
+		{name: "branch_lineage", derived: true},
+
+		// --- Config ---
+		{name: "project_settings", table: "kb.project_settings", projectFilter: byProject},
+		{name: "project_model_config", table: "kb.project_model_config", projectFilter: byProject, orderBy: "project_id"},
+		{name: "project_provider_configs", table: "kb.project_provider_configs", projectFilter: byProject},
+		{name: "embedding_policies", table: "kb.embedding_policies", projectFilter: byProject},
+
+		// --- Agents / skills ---
+		{name: "agents", table: "kb.agents", projectFilter: byProject},
+		{name: "agent_definitions", table: "kb.agent_definitions", projectFilter: byProject},
+		{name: "agent_webhook_hooks", table: "kb.agent_webhook_hooks", projectFilter: byProject},
+		// project_id = ? excludes org-level (project_id IS NULL) and global skills.
+		{name: "skills", table: "kb.skills", projectFilter: byProject, vectorColumns: []string{"description_embedding"}},
+		{name: "mcp_servers", table: "kb.mcp_servers", projectFilter: byProject},
+
+		// --- Taxonomy ---
+		{name: "tags", table: "kb.tags", projectFilter: byProject},
+		{name: "tasks", table: "kb.tasks", projectFilter: byProject},
+		{name: "external_sources", table: "kb.external_sources", projectFilter: byProject},
+		{name: "product_versions", table: "kb.product_versions", projectFilter: byProject},
+		{name: "sandbox_images", table: "kb.sandbox_images", projectFilter: byProject},
+
+		// --- Journal (opt-in, gated by includeJournal) ---
+		{name: "project_journal", table: "kb.project_journal", projectFilter: byProject, gate: gateJournal},
+		{name: "project_journal_notes", table: "kb.project_journal_notes", projectFilter: byProject, gate: gateJournal},
+	}
+}
+
+// enabledExportTables filters the curated surface by the opt-in gates.
+func enabledExportTables(opts ExportOptions) []tableConfig {
+	var out []tableConfig
+	for _, cfg := range allExportTables() {
+		switch cfg.gate {
+		case gateChat:
+			if !opts.IncludeChat {
+				continue
+			}
+		case gateJournal:
+			if !opts.IncludeJournal {
+				continue
+			}
+		}
+		out = append(out, cfg)
+	}
+	return out
+}
+
+// exportTable streams one table's rows as NDJSON (called per-entry by the
+// creator so zip entries are created and written in immediate succession).
+func (e *Exporter) exportTable(ctx context.Context, cfg tableConfig, w io.Writer, opts ExportOptions) (int, error) {
+	schema, table := splitTable(cfg.table)
+
+	cols, err := e.tableColumns(ctx, schema, table)
+	if err != nil {
+		return 0, fmt.Errorf("export %s: resolve columns: %w", cfg.name, err)
 	}
 
-	return e.streamQuery(ctx, query, w, "documents")
-}
-
-// ExportChunks exports chunks to NDJSON format
-func (e *Exporter) ExportChunks(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	// Join with documents to filter by project
-	query := e.db.NewSelect().
-		Table("kb.chunks").
-		Join("INNER JOIN kb.documents d ON d.id = kb.chunks.document_id").
-		Where("d.project_id = ?", opts.ProjectID)
-
-	if !opts.IncludeDeleted {
-		query = query.Where("kb.chunks.deleted_at IS NULL")
-	}
-
-	// Select all chunk columns
-	query = query.Column("kb.chunks.*")
-
-	return e.streamQuery(ctx, query, w, "chunks")
-}
-
-// ExportGraphObjects exports graph objects to NDJSON format
-func (e *Exporter) ExportGraphObjects(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	query := e.db.NewSelect().
-		Table("kb.graph_objects").
-		Where("project_id = ?", opts.ProjectID)
-
-	if !opts.IncludeDeleted {
-		query = query.Where("deleted_at IS NULL")
-	}
-
-	return e.streamQuery(ctx, query, w, "graph_objects")
-}
-
-// ExportGraphRelationships exports graph relationships to NDJSON format
-func (e *Exporter) ExportGraphRelationships(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	// Join with graph_objects to filter by project
-	query := e.db.NewSelect().
-		Table("kb.graph_relationships").
-		Join("INNER JOIN kb.graph_objects o ON o.id = kb.graph_relationships.source_object_id").
-		Where("o.project_id = ?", opts.ProjectID)
-
-	if !opts.IncludeDeleted {
-		query = query.Where("kb.graph_relationships.deleted_at IS NULL")
-	}
-
-	// Select all relationship columns
-	query = query.Column("kb.graph_relationships.*")
-
-	return e.streamQuery(ctx, query, w, "graph_relationships")
-}
-
-// ExportChatConversations exports chat conversations to NDJSON format
-func (e *Exporter) ExportChatConversations(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	if !opts.IncludeChat {
-		return 0, nil
+	colSet := make(map[string]bool, len(cols))
+	exprs := make([]string, 0, len(cols))
+	var vectorCols []string
+	for _, col := range cols {
+		colSet[col.Name] = true
+		expr, isVector := selectColumnExpr(col, containsString(cfg.vectorColumns, col.Name))
+		exprs = append(exprs, expr)
+		if isVector {
+			vectorCols = append(vectorCols, col.Name)
+		}
 	}
 
 	query := e.db.NewSelect().
-		Table("kb.chat_conversations").
-		Where("project_id = ?", opts.ProjectID)
+		TableExpr(cfg.table + " AS t").
+		ColumnExpr(strings.Join(exprs, ", "))
 
-	if !opts.IncludeDeleted {
-		query = query.Where("deleted_at IS NULL")
+	if cfg.join != "" {
+		query = query.Join(cfg.join)
+	}
+	if cfg.projectFilter != "" {
+		query = query.Where(cfg.projectFilter, opts.ProjectID)
+	}
+	// deletedColumn is only applied when the live schema actually has it, so
+	// legacy configs degrade gracefully on schemas without soft deletes.
+	if !opts.IncludeDeleted && cfg.deletedColumn != "" && colSet[cfg.deletedColumn] {
+		query = query.Where("t." + quoteIdent(cfg.deletedColumn) + " IS NULL")
+	}
+	if cfg.extraWhere != "" {
+		query = query.Where(cfg.extraWhere)
+	}
+	order := cfg.orderBy
+	if order == "" {
+		order = "id"
+	}
+	if colSet[order] {
+		query = query.OrderExpr("t." + quoteIdent(order) + " ASC")
 	}
 
-	return e.streamQuery(ctx, query, w, "chat_conversations")
+	return e.streamQuery(ctx, query, w, cfg.name, vectorCols)
 }
 
-// ExportChatMessages exports chat messages to NDJSON format
-func (e *Exporter) ExportChatMessages(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	if !opts.IncludeChat {
-		return 0, nil
+// selectColumnExpr returns the SELECT expression for a column and whether it is
+// a vector column (needing post-parse to []float32). jsonb/json/array columns
+// are cast ::text because pgx scans them into any as raw []byte, which
+// json.Marshal base64-encodes; casting yields a plain string that round-trips.
+func selectColumnExpr(col colInfo, vectorListed bool) (expr string, isVector bool) {
+	if vectorListed || col.UDTName == "vector" || col.UDTName == "halfvec" {
+		return fmt.Sprintf("t.%s::text AS %s", quoteIdent(col.Name), quoteIdent(col.Name)), true
+	}
+	if col.UDTName == "jsonb" || col.DataType == "jsonb" || col.DataType == "json" {
+		return fmt.Sprintf("t.%s::text AS %s", quoteIdent(col.Name), quoteIdent(col.Name)), false
+	}
+	if col.DataType == "ARRAY" {
+		return fmt.Sprintf("t.%s::text AS %s", quoteIdent(col.Name), quoteIdent(col.Name)), false
+	}
+	return "t." + quoteIdent(col.Name), false
+}
+
+// branchRow is the minimal shape of kb.branches needed to re-derive lineage.
+type branchRow struct {
+	ID             string    `bun:"id"`
+	ParentBranchID *string   `bun:"parent_branch_id"`
+	CreatedAt      time.Time `bun:"created_at"`
+}
+
+// exportBranchLineage re-derives kb.branch_lineage from kb.branches
+// (parent_branch_id) because lineage rows carry no project_id. The shape
+// mirrors what branches.Store.EnsureBranchLineage inserts: a self row at
+// depth 0 plus one row per ancestor at hop distance.
+func (e *Exporter) exportBranchLineage(ctx context.Context, w io.Writer, projectID string) (int, error) {
+	var branches []branchRow
+	if err := e.db.NewSelect().
+		Table("kb.branches").
+		Column("id", "parent_branch_id", "created_at").
+		Where("project_id = ?", projectID).
+		Order("created_at ASC").
+		Scan(ctx, &branches); err != nil {
+		return 0, fmt.Errorf("export branch_lineage: load branches: %w", err)
 	}
 
-	// Join with conversations to filter by project
-	query := e.db.NewSelect().
-		Table("kb.chat_messages").
-		Join("INNER JOIN kb.chat_conversations c ON c.id = kb.chat_messages.conversation_id").
-		Where("c.project_id = ?", opts.ProjectID)
-
-	if !opts.IncludeDeleted {
-		query = query.Where("kb.chat_messages.deleted_at IS NULL")
+	byID := make(map[string]branchRow, len(branches))
+	for _, b := range branches {
+		byID[b.ID] = b
 	}
 
-	// Select all message columns
-	query = query.Column("kb.chat_messages.*")
+	encoder := json.NewEncoder(w)
+	count := 0
+	for _, b := range branches {
+		// Self lineage row (depth 0).
+		if err := encoder.Encode(branchLineageRow(b.ID, b.ID, 0, b.CreatedAt)); err != nil {
+			return count, fmt.Errorf("encode branch_lineage row: %w", err)
+		}
+		count++
 
-	return e.streamQuery(ctx, query, w, "chat_messages")
+		// Walk parent links: one row per ancestor at hop distance.
+		depth := 1
+		ancestorID := b.ParentBranchID
+		for ancestorID != nil {
+			anc, ok := byID[*ancestorID]
+			if !ok {
+				// Parent is outside this project (or orphaned); stop walking.
+				break
+			}
+			if err := encoder.Encode(branchLineageRow(b.ID, anc.ID, depth, b.CreatedAt)); err != nil {
+				return count, fmt.Errorf("encode branch_lineage row: %w", err)
+			}
+			count++
+			ancestorID = anc.ParentBranchID
+			depth++
+		}
+	}
+
+	e.log.Debug("derived branch_lineage",
+		slog.String("project_id", projectID),
+		slog.Int("rows", count),
+	)
+	return count, nil
 }
 
-// ExportExtractionJobs exports extraction jobs to NDJSON format
-func (e *Exporter) ExportExtractionJobs(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	query := e.db.NewSelect().
-		Table("kb.object_extraction_jobs").
-		Where("project_id = ?", opts.ProjectID)
-
-	// Only export completed jobs
-	query = query.Where("status IN ('completed', 'failed')")
-
-	return e.streamQuery(ctx, query, w, "extraction_jobs")
+// branchLineageRow renders one NDJSON record with the kb.branch_lineage
+// column names so the importer can insert rows directly.
+func branchLineageRow(branchID, ancestorID string, depth int, createdAt time.Time) map[string]any {
+	return map[string]any{
+		"branch_id":          branchID,
+		"ancestor_branch_id": ancestorID,
+		"depth":              depth,
+		"created_at":         createdAt,
+	}
 }
 
-// ExportProjectMemberships exports project memberships to NDJSON format
-func (e *Exporter) ExportProjectMemberships(ctx context.Context, w io.Writer, opts ExportOptions) (int, error) {
-	query := e.db.NewSelect().
-		Table("kb.project_memberships").
-		Where("project_id = ?", opts.ProjectID)
-
-	return e.streamQuery(ctx, query, w, "project_memberships")
+// colInfo describes one table column needed to serialize its rows faithfully.
+type colInfo struct {
+	Name     string `bun:"column_name"`
+	DataType string `bun:"data_type"`
+	UDTName  string `bun:"udt_name"`
 }
 
-// streamQuery executes a query and streams results as NDJSON
-func (e *Exporter) streamQuery(ctx context.Context, query *bun.SelectQuery, w io.Writer, tableName string) (int, error) {
+// tableColumns returns the column names and types of a table in ordinal order.
+func (e *Exporter) tableColumns(ctx context.Context, schema, table string) ([]colInfo, error) {
+	var cols []colInfo
+	err := e.db.NewSelect().
+		TableExpr("information_schema.columns").
+		Column("column_name", "data_type", "udt_name").
+		Where("table_schema = ?", schema).
+		Where("table_name = ?", table).
+		Order("ordinal_position").
+		Scan(ctx, &cols)
+	if err != nil {
+		return nil, err
+	}
+	return cols, nil
+}
+
+// streamQuery executes a query in ordered batches and streams rows as NDJSON.
+func (e *Exporter) streamQuery(ctx context.Context, query *bun.SelectQuery, w io.Writer, tableName string, vectorCols []string) (int, error) {
 	encoder := json.NewEncoder(w)
 	count := 0
 	const batchSize = 1000
@@ -196,6 +332,9 @@ func (e *Exporter) streamQuery(ctx context.Context, query *bun.SelectQuery, w io
 
 		// Write each row as NDJSON
 		for _, row := range rows {
+			if err := serializeVectorColumns(row, vectorCols); err != nil {
+				return count, fmt.Errorf("export %s row: %w", tableName, err)
+			}
 			if err := encoder.Encode(row); err != nil {
 				e.log.Error("failed to encode row",
 					slog.String("table", tableName),
@@ -224,83 +363,52 @@ func (e *Exporter) streamQuery(ctx context.Context, query *bun.SelectQuery, w io
 	return count, nil
 }
 
-// ExportAll exports all project data and returns statistics
-func (e *Exporter) ExportAll(ctx context.Context, writers map[string]io.Writer, opts ExportOptions) (*ExportResult, error) {
-	result := &ExportResult{}
-
-	var err error
-
-	// Export documents
-	if w, ok := writers["documents"]; ok {
-		result.Documents, err = e.ExportDocuments(ctx, w, opts)
+// serializeVectorColumns converts ::text-cast vector values into []float32 so
+// they JSON-encode as arrays of floats instead of bracketed strings.
+func serializeVectorColumns(row map[string]any, vectorCols []string) error {
+	for _, col := range vectorCols {
+		v, ok := row[col]
+		if !ok || v == nil {
+			continue
+		}
+		var s string
+		switch t := v.(type) {
+		case string:
+			s = t
+		case []byte:
+			s = string(t)
+		default:
+			// Not a scanned text value; leave as-is.
+			continue
+		}
+		parsed, err := pgutils.ParseVector(s)
 		if err != nil {
-			return result, fmt.Errorf("export documents: %w", err)
+			return fmt.Errorf("parse vector column %q: %w", col, err)
+		}
+		row[col] = parsed
+	}
+	return nil
+}
+
+// splitTable splits "kb.documents" into schema and table name.
+func splitTable(qualified string) (string, string) {
+	schema, table, ok := strings.Cut(qualified, ".")
+	if !ok {
+		return "kb", qualified
+	}
+	return schema, table
+}
+
+// quoteIdent double-quotes a SQL identifier.
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func containsString(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
 		}
 	}
-
-	// Export chunks
-	if w, ok := writers["chunks"]; ok {
-		result.Chunks, err = e.ExportChunks(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export chunks: %w", err)
-		}
-	}
-
-	// Export graph objects
-	if w, ok := writers["graph_objects"]; ok {
-		result.GraphObjects, err = e.ExportGraphObjects(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export graph objects: %w", err)
-		}
-	}
-
-	// Export graph relationships
-	if w, ok := writers["graph_relationships"]; ok {
-		result.GraphRelationships, err = e.ExportGraphRelationships(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export graph relationships: %w", err)
-		}
-	}
-
-	// Export chat conversations
-	if w, ok := writers["chat_conversations"]; ok {
-		result.ChatConversations, err = e.ExportChatConversations(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export chat conversations: %w", err)
-		}
-	}
-
-	// Export chat messages
-	if w, ok := writers["chat_messages"]; ok {
-		result.ChatMessages, err = e.ExportChatMessages(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export chat messages: %w", err)
-		}
-	}
-
-	// Export extraction jobs
-	if w, ok := writers["extraction_jobs"]; ok {
-		result.ExtractionJobs, err = e.ExportExtractionJobs(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export extraction jobs: %w", err)
-		}
-	}
-
-	// Export project memberships
-	if w, ok := writers["project_memberships"]; ok {
-		result.ProjectMemberships, err = e.ExportProjectMemberships(ctx, w, opts)
-		if err != nil {
-			return result, fmt.Errorf("export project memberships: %w", err)
-		}
-	}
-
-	e.log.Info("export completed",
-		slog.String("project_id", opts.ProjectID),
-		slog.Int("documents", result.Documents),
-		slog.Int("chunks", result.Chunks),
-		slog.Int("graph_objects", result.GraphObjects),
-		slog.Int("graph_relationships", result.GraphRelationships),
-	)
-
-	return result, nil
+	return false
 }

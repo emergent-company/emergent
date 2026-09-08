@@ -11,6 +11,9 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
+// Keep apperror imported for swagger type resolution (@Failure {object} apperror.Error).
+var _ = apperror.Error{}
+
 // Handler handles auth introspection HTTP requests
 type Handler struct {
 	db  bun.IDB
@@ -74,10 +77,7 @@ func (h *Handler) Issuer(c echo.Context) error {
 // @Router       /api/auth/me [get]
 // @Security     bearerAuth
 func (h *Handler) Me(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	resp := TokenInfoResponse{
 		UserID: user.ID,

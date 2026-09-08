@@ -40,8 +40,8 @@ func newMigrationService(t *testing.T, db *bun.DB) (*Service, *schemas.Service, 
 
 	repo := NewRepository(db, log)
 	skillsRepo := skills.NewRepository(db, log)
-	svc := NewService(repo, schemasSvc, schemasRepo, skillsRepo, graphSvc, log)
-	svc.SetAgentRepo(agents.NewRepository(db))
+	svc := NewService(ServiceParams{Repo: repo, SchemasSvc: schemasSvc, SchemasRepo: schemasRepo, SkillsRepo: skillsRepo, GraphSvc: graphSvc, Log: log})
+	svc.agentRepo = agents.NewRepository(db)
 	return svc, schemasSvc, schemasRepo
 }
 

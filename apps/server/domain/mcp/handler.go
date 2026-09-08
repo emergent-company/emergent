@@ -14,6 +14,9 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
 
+// Keep apperror imported for swagger type resolution (@Failure {object} apperror.Error).
+var _ = apperror.Error{}
+
 // Handler handles MCP HTTP requests
 type Handler struct {
 	svc            *Service
@@ -83,10 +86,7 @@ func (h *Handler) HandleOAuthProtectedResource(c echo.Context) error {
 // @Router       /api/mcp/rpc [post]
 // @Security     bearerAuth
 func (h *Handler) HandleRPC(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Parse JSON-RPC request
 	var req Request

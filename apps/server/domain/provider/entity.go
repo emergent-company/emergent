@@ -192,3 +192,22 @@ type OrganizationCustomPricing struct {
 	CreatedAt       time.Time    `bun:"created_at,notnull,default:now()" json:"createdAt"`
 	UpdatedAt       time.Time    `bun:"updated_at,notnull,default:now()" json:"updatedAt"`
 }
+
+// ProjectCustomPricing stores project-specific pricing overrides (manual rates).
+// Prices are per 1 million tokens.
+// Table: kb.project_custom_pricing (migration 00140)
+type ProjectCustomPricing struct {
+	bun.BaseModel `bun:"table:kb.project_custom_pricing,alias:pcp"`
+
+	ID              string       `bun:"id,pk,type:uuid,default:uuid_generate_v4()" json:"id"`
+	ProjectID       string       `bun:"project_id,notnull,type:uuid" json:"projectId"`
+	Provider        ProviderType `bun:"provider,notnull" json:"provider"`
+	Model           string       `bun:"model,notnull" json:"model"`
+	TextInputPrice  float64      `bun:"text_input_price,notnull,default:0" json:"textInputPrice"`
+	ImageInputPrice float64      `bun:"image_input_price,notnull,default:0" json:"imageInputPrice"`
+	VideoInputPrice float64      `bun:"video_input_price,notnull,default:0" json:"videoInputPrice"`
+	AudioInputPrice float64      `bun:"audio_input_price,notnull,default:0" json:"audioInputPrice"`
+	OutputPrice     float64      `bun:"output_price,notnull,default:0" json:"outputPrice"`
+	CreatedAt       time.Time    `bun:"created_at,notnull,default:now()" json:"createdAt"`
+	UpdatedAt       time.Time    `bun:"updated_at,notnull,default:now()" json:"updatedAt"`
+}

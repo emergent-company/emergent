@@ -21,6 +21,7 @@ type AgentDTO struct {
 	Capabilities        *AgentCapabilities `json:"capabilities"`
 	Config              map[string]any     `json:"config"`
 	Description         *string            `json:"description"`
+	AgentDefinitionID   *string            `json:"agentDefinitionId,omitempty"`
 	LastRunAt           *time.Time         `json:"lastRunAt"`
 	LastRunStatus       *string            `json:"lastRunStatus"`
 	ConsecutiveFailures int                `json:"consecutiveFailures"`
@@ -63,6 +64,12 @@ type AgentRunDTO struct {
 
 	// Token usage aggregated from kb.llm_usage_events for this run.
 	TokenUsage *RunTokenUsage `json:"tokenUsage,omitempty"`
+
+	// Spans holds the flattened OTLP trace spans for this run, fetched from
+	// Tempo when tracing is enabled. Omitted when tracing is disabled, Tempo is
+	// unreachable, or the run has no trace. The tree is reconstructible via
+	// parentSpanId (empty on the root span).
+	Spans []RunTraceSpan `json:"spans,omitempty"`
 
 	// Workspace/sandbox details for this run (when applicable).
 	Workspace *RunWorkspaceDTO `json:"workspace,omitempty"`
@@ -224,6 +231,7 @@ func (a *Agent) ToDTO() *AgentDTO {
 		Capabilities:        a.Capabilities,
 		Config:              a.Config,
 		Description:         a.Description,
+		AgentDefinitionID:   a.AgentDefinitionID,
 		LastRunAt:           a.LastRunAt,
 		LastRunStatus:       a.LastRunStatus,
 		ConsecutiveFailures: a.ConsecutiveFailures,

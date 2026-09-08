@@ -51,10 +51,6 @@ func resolveProjectID(c echo.Context) (string, error) {
 // @Router       /api/graph/branches [get]
 // @Security     bearerAuth
 func (h *Handler) List(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID, err := resolveProjectID(c)
 	if err != nil {
@@ -84,10 +80,6 @@ func (h *Handler) List(c echo.Context) error {
 // @Router       /api/graph/branches/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetByID(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -126,10 +118,6 @@ func (h *Handler) GetByID(c echo.Context) error {
 // @Router       /api/graph/branches [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	var req CreateBranchRequest
 	if err := c.Bind(&req); err != nil {
@@ -189,10 +177,6 @@ func (h *Handler) Create(c echo.Context) error {
 // @Router       /api/graph/branches/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) Update(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {
@@ -237,10 +221,6 @@ func (h *Handler) Update(c echo.Context) error {
 // @Router       /api/graph/branches/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) Delete(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	id := c.Param("id")
 	if id == "" {

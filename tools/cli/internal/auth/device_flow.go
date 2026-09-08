@@ -6,11 +6,22 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/pkg/browser"
 )
+
+// OAuthClientID returns the OAuth client ID used for the device flow,
+// overridable via MEMORY_OAUTH_CLIENT_ID (e.g. to point the CLI at a dev
+// Zitadel instance whose memory-cli app has a different client ID).
+func OAuthClientID() string {
+	if v := os.Getenv("MEMORY_OAUTH_CLIENT_ID"); v != "" {
+		return v
+	}
+	return "362800068257972227"
+}
 
 type DeviceCodeResponse struct {
 	DeviceCode              string `json:"device_code"`

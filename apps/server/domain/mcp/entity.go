@@ -35,6 +35,11 @@ type SessionHistoryProvider interface {
 	GetConversationFullHistoryRaw(ctx context.Context, acpSessionID string) ([]map[string]any, error)
 }
 
+// GraphObjectPatcher patches graph object Properties.title when set_session_title runs.
+// Satisfied by graph.Service.PatchGraphObjectTitle — defined as a func type to avoid
+// a circular import (mcp already imports graph).
+type GraphObjectPatcher func(ctx context.Context, projectID, objectID, title string) error
+
 // ContextWithACPSessionID stores the ACP session ID in context.
 // Called by the agent executor before running tools so that built-in tools
 // like set_session_title can update session metadata.

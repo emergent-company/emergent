@@ -91,10 +91,7 @@ func NewHandler(svc *Service, llmClient *vertex.Client, searchSvc *search.Servic
 // @Router       /api/chat/conversations [get]
 // @Security     bearerAuth
 func (h *Handler) ListConversations(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -143,10 +140,7 @@ func (h *Handler) ListConversations(c echo.Context) error {
 // @Router       /api/chat/{id} [get]
 // @Security     bearerAuth
 func (h *Handler) GetConversation(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -181,10 +175,7 @@ func (h *Handler) GetConversation(c echo.Context) error {
 // @Router       /api/chat/conversations [post]
 // @Security     bearerAuth
 func (h *Handler) CreateConversation(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -226,10 +217,7 @@ func (h *Handler) CreateConversation(c echo.Context) error {
 // @Router       /api/chat/{id} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateConversation(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -273,10 +261,7 @@ func (h *Handler) UpdateConversation(c echo.Context) error {
 // @Router       /api/chat/{id} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteConversation(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -311,10 +296,7 @@ func (h *Handler) DeleteConversation(c echo.Context) error {
 // @Router       /api/chat/{id}/messages [post]
 // @Security     bearerAuth
 func (h *Handler) AddMessage(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -349,10 +331,7 @@ func (h *Handler) AddMessage(c echo.Context) error {
 //
 // GET /api/chat/:id/history
 func (h *Handler) GetConversationHistory(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
 	}
@@ -485,10 +464,7 @@ func validateStreamRequest(req *StreamRequest) error {
 // @Router       /api/chat/stream [post]
 // @Security     bearerAuth
 func (h *Handler) StreamChat(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	if user.ProjectID == "" {
 		return apperror.ErrBadRequest.WithMessage("x-project-id header required")
@@ -814,29 +790,6 @@ func (h *Handler) formatSearchContext(results []search.UnifiedSearchResultItem) 
 	return b.String()
 }
 
-func formatFieldValue(v any) string {
-	if v == nil {
-		return "null"
-	}
-	switch val := v.(type) {
-	case string:
-		if len(val) > 100 {
-			return val[:100] + "…"
-		}
-		return val
-	default:
-		raw, err := json.Marshal(val)
-		if err != nil {
-			return "?"
-		}
-		s := string(raw)
-		if len(s) > 100 {
-			return s[:100] + "…"
-		}
-		return s
-	}
-}
-
 // friendlyProviderError returns a short, human-readable message when err is a
 // well-known LLM provider failure (expired/invalid API key, quota exceeded,
 // etc.), or falls back to the raw error string for anything else.
@@ -1144,10 +1097,7 @@ type QueryStreamRequest struct {
 // using the same agent chat path as /api/chat/stream. The agent is internal — it never
 // appears in the agent definitions list. No conversation is persisted.
 func (h *Handler) QueryStream(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -1314,10 +1264,7 @@ type AskStreamRequest struct {
 //
 // The handler accepts OAuth tokens, emt_* project tokens, and standalone API keys.
 func (h *Handler) AskStream(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Resolve project ID: URL param > API token project > X-Project-ID header.
 	projectID := c.Param("projectId")
@@ -1497,10 +1444,7 @@ type RememberStreamRequest struct {
 //   - "sync"             — wait for completion, return JSON {run_id, status, summary}
 //   - "async"            — fire-and-forget, return 202 JSON {run_id}
 func (h *Handler) RememberStream(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -1922,10 +1866,7 @@ type RememberFileRequest struct {
 //	conversation_id — optional: reuse an existing conversation
 //	mode            — optional: "stream" (default) | "sync" | "async"
 func (h *Handler) RememberFile(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -2366,14 +2307,6 @@ func buildAskContextPrefix(user *auth.AuthUser, projectID string) string {
 	return sb.String()
 }
 
-// nilIfEmpty returns a pointer to s if s is non-empty, otherwise nil.
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
 // demoteStageForPolicy applies schema-policy enforcement to a classifier stage.
 // When policy is "reuse_only" and the classifier found no matching schema
 // (stage=="new_domain"), the stage is demoted to "no_match" so the agent
@@ -2413,10 +2346,7 @@ func buildForgetAgentMessage(userQuery, strategy string, cascadeDepth int, dryRu
 // It finds graph objects matching the user's natural-language query and soft-deletes them
 // using the forget-agent. Soft-deletes are reversible via entity-restore.
 func (h *Handler) ForgetStream(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {

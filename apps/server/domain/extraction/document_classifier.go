@@ -258,60 +258,6 @@ func cosineSimilarity(a, b []float32) float32 {
 	return float32(sim)
 }
 
-// heuristicMatch scores each schema pack by keyword overlap with documentText.
-// Returns the best match and the matched keywords. Returns nil when no pack
-// has enough signal.
-func (c *DocumentClassifier) heuristicMatch(
-	documentText string,
-	packs []InstalledSchemaSummary,
-) (*ClassificationResult, []string) {
-	lower := strings.ToLower(documentText)
-
-	bestScore := 0
-	var bestPack *InstalledSchemaSummary
-	var bestKeywords []string
-
-	for i := range packs {
-		pack := &packs[i]
-		var matched []string
-		for _, kw := range pack.Keywords {
-			if strings.Contains(lower, strings.ToLower(kw)) {
-				matched = append(matched, kw)
-			}
-		}
-		if len(matched) > bestScore {
-			bestScore = len(matched)
-			bestPack = pack
-			bestKeywords = matched
-		}
-	}
-
-	if bestPack == nil || bestScore == 0 {
-		return nil, nil
-	}
-
-	// Confidence: saturates at 1.0 after 5 keyword hits.
-	confidence := float32(bestScore) / 5.0
-	if confidence > 1.0 {
-		confidence = 1.0
-	}
-
-	result := &ClassificationResult{
-		DomainName:      bestPack.Name,
-		Confidence:      confidence,
-		MatchedSchemaID: &bestPack.ID,
-		Signals: ClassificationSignals{
-			MatchedSchemaID:   &bestPack.ID,
-			MatchedSchemaName: &bestPack.Name,
-		},
-	}
-	if bestPack.ExtractionPrompts != nil {
-		result.DomainGuidance = bestPack.ExtractionPrompts.DomainContext
-	}
-
-	return result, bestKeywords
-}
-
 // objectTypeMatch compares suggestedTypeNames (from agent test extraction) against
 // the per-type embeddings of each installed schema pack. Returns the best-matching
 // pack when at least 40% of suggested types find a close match (cosine ≥ 0.75)

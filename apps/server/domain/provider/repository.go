@@ -191,8 +191,8 @@ func (r *Repository) UpsertSupportedModels(ctx context.Context, models []Provide
 		On("CONFLICT (provider, model_name) DO UPDATE").
 		Set("model_type = EXCLUDED.model_type").
 		Set("display_name = EXCLUDED.display_name").
-		Set("max_input_tokens = COALESCE(EXCLUDED.max_input_tokens, provider_supported_models.max_input_tokens)").
-		Set("max_output_tokens = COALESCE(EXCLUDED.max_output_tokens, provider_supported_models.max_output_tokens)").
+		Set("max_input_tokens = COALESCE(EXCLUDED.max_input_tokens, kb.provider_supported_models.max_input_tokens)").
+		Set("max_output_tokens = COALESCE(EXCLUDED.max_output_tokens, kb.provider_supported_models.max_output_tokens)").
 		Set("last_synced = NOW()").
 		Exec(ctx)
 
@@ -368,6 +368,25 @@ func (r *Repository) GetPricingByModel(ctx context.Context, model string) (*Prov
 	return &pricing, nil
 }
 
+// ListPricing returns all global retail pricing rows, ordered by provider then
+// model. Returns an empty (non-nil) slice when no rows exist.
+func (r *Repository) ListPricing(ctx context.Context) ([]ProviderPricing, error) {
+	var rows []ProviderPricing
+	err := r.db.NewSelect().
+		Model(&rows).
+		OrderExpr("provider ASC, model ASC").
+		Scan(ctx)
+
+	if err != nil {
+		r.log.Error("failed to list pricing", logger.Error(err))
+		return nil, apperror.ErrDatabase.WithInternal(err)
+	}
+	if rows == nil {
+		rows = []ProviderPricing{}
+	}
+	return rows, nil
+}
+
 // UpsertPricing bulk upserts global pricing entries.
 func (r *Repository) UpsertPricing(ctx context.Context, entries []ProviderPricing) error {
 	if len(entries) == 0 {
@@ -417,6 +436,103 @@ func (r *Repository) GetOrgCustomPricing(ctx context.Context, orgID string, prov
 		return nil, apperror.ErrDatabase.WithInternal(err)
 	}
 	return &pricing, nil
+}
+
+// --- Project Custom Pricing ---
+
+// GetProjectCustomPricing returns the custom pricing for a specific project,
+// provider, and model. Returns (nil, nil) when no override exists.
+func (r *Repository) GetProjectCustomPricing(ctx context.Context, projectID string, provider ProviderType, model string) (*ProjectCustomPricing, error) {
+	var pricing ProjectCustomPricing
+	err := r.db.NewSelect().
+		Model(&pricing).
+		Where("project_id = ?", projectID).
+		Where("provider = ?", provider).
+		Where("model = ?", model).
+		Scan(ctx)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		r.log.Error("failed to get project custom pricing",
+			logger.Error(err),
+			slog.String("projectID", projectID),
+			slog.String("provider", string(provider)),
+			slog.String("model", model),
+		)
+		return nil, apperror.ErrDatabase.WithInternal(err)
+	}
+	return &pricing, nil
+}
+
+// ListProjectCustomPricing lists all custom pricing overrides for a project,
+// ordered by provider then model.
+func (r *Repository) ListProjectCustomPricing(ctx context.Context, projectID string) ([]ProjectCustomPricing, error) {
+	var entries []ProjectCustomPricing
+	err := r.db.NewSelect().
+		Model(&entries).
+		Where("project_id = ?", projectID).
+		Order("provider ASC", "model ASC").
+		Scan(ctx)
+
+	if err != nil {
+		r.log.Error("failed to list project custom pricing",
+			logger.Error(err),
+			slog.String("projectID", projectID),
+		)
+		return nil, apperror.ErrDatabase.WithInternal(err)
+	}
+	return entries, nil
+}
+
+// UpsertProjectCustomPricing inserts or updates a project's pricing override.
+// The override is keyed by (project_id, provider, model).
+func (r *Repository) UpsertProjectCustomPricing(ctx context.Context, entry *ProjectCustomPricing) error {
+	_, err := r.db.NewInsert().
+		Model(entry).
+		On("CONFLICT (project_id, provider, model) DO UPDATE").
+		Set("text_input_price = EXCLUDED.text_input_price").
+		Set("image_input_price = EXCLUDED.image_input_price").
+		Set("video_input_price = EXCLUDED.video_input_price").
+		Set("audio_input_price = EXCLUDED.audio_input_price").
+		Set("output_price = EXCLUDED.output_price").
+		Set("updated_at = NOW()").
+		Returning("*").
+		Exec(ctx)
+
+	if err != nil {
+		r.log.Error("failed to upsert project custom pricing",
+			logger.Error(err),
+			slog.String("projectID", entry.ProjectID),
+			slog.String("provider", string(entry.Provider)),
+			slog.String("model", entry.Model),
+		)
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+	return nil
+}
+
+// DeleteProjectCustomPricing removes a project's pricing override for the given
+// provider and model. Deleting a non-existent override is a no-op.
+func (r *Repository) DeleteProjectCustomPricing(ctx context.Context, projectID string, provider ProviderType, model string) error {
+	_, err := r.db.NewDelete().
+		Model((*ProjectCustomPricing)(nil)).
+		Where("project_id = ?", projectID).
+		Where("provider = ?", provider).
+		Where("model = ?", model).
+		Exec(ctx)
+
+	if err != nil {
+		r.log.Error("failed to delete project custom pricing",
+			logger.Error(err),
+			slog.String("projectID", projectID),
+			slog.String("provider", string(provider)),
+			slog.String("model", model),
+		)
+		return apperror.ErrDatabase.WithInternal(err)
+	}
+	return nil
 }
 
 // UsageSummaryRow is a single row from an aggregated usage query.

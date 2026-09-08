@@ -204,20 +204,31 @@ func runListScopes(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// validScopesSummary returns a comma-separated list of every valid scope name,
+// derived from tokenScopeGroups so the create --help text can never drift from
+// the authoritative scope list.
+func validScopesSummary() string {
+	var names []string
+	for _, group := range tokenScopeGroups {
+		for _, s := range group.Scopes {
+			names = append(names, s.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
 var createTokenCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new API token",
-	Long: `Create a new API token.
-
-Without --project, creates an account-level token usable across all projects.
-With --project, creates a project-scoped token.
-
-On success, prints the full plaintext Token value prominently (this is the only
-time the full token is shown — save it immediately), followed by ID, Name, Type,
-Prefix, Scopes, and Created timestamp.
-
-Valid scopes: schema:read, data:read, data:write, agents:read, agents:write, projects:read, projects:write.
-Scopes are comma-separated. Use --scopes all to grant full admin access (admin:all).`,
+	Long: "Create a new API token.\n\n" +
+		"Without --project, creates an account-level token usable across all projects.\n" +
+		"With --project, creates a project-scoped token.\n\n" +
+		"On success, prints the full plaintext Token value prominently (this is the only\n" +
+		"time the full token is shown — save it immediately), followed by ID, Name, Type,\n" +
+		"Prefix, Scopes, and Created timestamp.\n\n" +
+		"Valid scopes: " + validScopesSummary() + ".\n" +
+		"Scopes are comma-separated. Use --scopes all to grant full admin access (admin:all).\n" +
+		"Run 'memory tokens scopes' for a description of each scope.",
 	RunE: runCreateToken,
 }
 

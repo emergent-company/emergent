@@ -84,7 +84,7 @@ var _ Provider = (*provisioningProvider)(nil)
 
 func TestIntegration_AutoProvision_DisabledConfig(t *testing.T) {
 	// When workspace config is disabled, ProvisionForSession returns nil.
-	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger(), nil)
 
 	result, err := ap.ProvisionForSession(t.Context(), "agent-def-1", "",
 		map[string]any{"enabled": false},
@@ -98,7 +98,7 @@ func TestIntegration_AutoProvision_DisabledConfig(t *testing.T) {
 
 func TestIntegration_AutoProvision_NilConfig(t *testing.T) {
 	// When workspace config is nil, ProvisionForSession returns nil.
-	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger(), nil)
 
 	result, err := ap.ProvisionForSession(t.Context(), "agent-def-1", "", nil, nil, "", nil)
 	assert.NoError(t, err)
@@ -107,7 +107,7 @@ func TestIntegration_AutoProvision_NilConfig(t *testing.T) {
 
 func TestIntegration_AutoProvision_InvalidConfig(t *testing.T) {
 	// When workspace config is unparseable, ProvisionForSession returns error.
-	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger(), nil)
 
 	// json.Marshal(chan) fails — but we won't get that from map[string]any.
 	// Instead, just confirm a valid but minimal config works:
@@ -128,7 +128,7 @@ func TestIntegration_AutoProvision_NoProviders_DegradedMode(t *testing.T) {
 	// No providers registered
 
 	svc := NewService(nil, o, testLogger())
-	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger(), nil)
 
 	config := map[string]any{
 		"enabled": true,
@@ -679,7 +679,7 @@ func TestIntegration_WorkspaceConfig_NormalizeTools(t *testing.T) {
 
 func TestIntegration_AutoProvision_TeardownWorkspace_NilWorkspace(t *testing.T) {
 	// TeardownWorkspace with nil should be a no-op.
-	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(nil, nil, nil, nil, nil, testLogger(), nil)
 	ap.TeardownWorkspace(t.Context(), nil) // Should not panic
 }
 
@@ -687,7 +687,7 @@ func TestIntegration_AutoProvision_TeardownWorkspace_ProviderNotRegistered(t *te
 	// TeardownWorkspace when provider is not registered should log warning.
 	o := NewOrchestrator(testLogger())
 	svc := NewService(nil, o, testLogger())
-	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger(), nil)
 
 	ws := &AgentSandbox{
 		ID:                  "ws-teardown",
@@ -714,7 +714,7 @@ func TestIntegration_AutoProvision_TeardownWorkspace_ProviderDestroyFails(t *tes
 	o.RegisterProvider(ProviderGVisor, gv)
 
 	svc := NewService(nil, o, testLogger())
-	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(svc, o, nil, nil, nil, testLogger(), nil)
 
 	ws := &AgentSandbox{
 		ID:                  "ws-teardown-fail",
@@ -736,7 +736,7 @@ func TestIntegration_AutoProvision_GetProviderForWorkspace(t *testing.T) {
 	gv := &mockProvider{name: "gvisor", providerType: ProviderGVisor, healthy: true}
 	o.RegisterProvider(ProviderGVisor, gv)
 
-	ap := NewAutoProvisioner(nil, o, nil, nil, nil, testLogger())
+	ap := NewAutoProvisioner(nil, o, nil, nil, nil, testLogger(), nil)
 
 	t.Run("valid workspace", func(t *testing.T) {
 		ws := &AgentSandbox{Provider: ProviderGVisor}

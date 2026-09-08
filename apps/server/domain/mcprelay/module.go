@@ -21,7 +21,7 @@ var Module = fx.Module("mcprelay",
 	fx.Provide(NewService),
 	fx.Provide(NewHandler),
 	fx.Invoke(RegisterRoutes),
-	fx.Invoke(registerRelayProvider),
+	fx.Provide(provideRelayProvider),
 )
 
 // relayAdapter adapts mcprelay.Service to mcp.RelayToolProvider.
@@ -46,8 +46,8 @@ func (a *relayAdapter) CallTool(ctx context.Context, projectID, instanceID, tool
 	return a.svc.CallTool(ctx, projectID, instanceID, toolName, args)
 }
 
-// registerRelayProvider wires the relay service into the MCP service so relay
-// tools appear in tools/list and relay tool calls are forwarded correctly.
-func registerRelayProvider(relaySvc *Service, mcpSvc *mcp.Service) {
-	mcpSvc.SetRelayProvider(&relayAdapter{svc: relaySvc})
+// provideRelayProvider exposes the relay service as mcp.RelayToolProvider so
+// relay tools appear in tools/list and relay tool calls are forwarded correctly.
+func provideRelayProvider(relaySvc *Service) mcp.RelayToolProvider {
+	return &relayAdapter{svc: relaySvc}
 }

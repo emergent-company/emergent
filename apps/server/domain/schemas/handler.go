@@ -33,10 +33,6 @@ func NewHandler(svc *Service) *Handler {
 // @Router       /api/schemas/projects/{projectId}/compiled-types [get]
 // @Security     bearerAuth
 func (h *Handler) GetCompiledTypes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -65,10 +61,6 @@ func (h *Handler) GetCompiledTypes(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/available [get]
 // @Security     bearerAuth
 func (h *Handler) GetAvailablePacks(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -97,10 +89,6 @@ func (h *Handler) GetAvailablePacks(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/installed [get]
 // @Security     bearerAuth
 func (h *Handler) GetInstalledPacks(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -133,10 +121,7 @@ func (h *Handler) GetInstalledPacks(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/assign [post]
 // @Security     bearerAuth
 func (h *Handler) AssignPack(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -180,10 +165,6 @@ func (h *Handler) AssignPack(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/assignments/{assignmentId} [patch]
 // @Security     bearerAuth
 func (h *Handler) UpdateAssignment(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	assignmentID := c.Param("assignmentId")
@@ -219,10 +200,6 @@ func (h *Handler) UpdateAssignment(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/assignments/{assignmentId} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeleteAssignment(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	assignmentID := c.Param("assignmentId")
@@ -251,10 +228,7 @@ func (h *Handler) DeleteAssignment(c echo.Context) error {
 // @Router       /api/schemas [post]
 // @Security     bearerAuth
 func (h *Handler) CreatePack(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	// Determine project ID from auth context
 	projectID := user.APITokenProjectID
@@ -303,10 +277,7 @@ func (h *Handler) CreatePack(c echo.Context) error {
 // @Router       /api/schemas/{packId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetPack(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	packID := c.Param("packId")
 	if packID == "" {
@@ -342,10 +313,7 @@ func (h *Handler) GetPack(c echo.Context) error {
 // @Router       /api/schemas/{packId} [put]
 // @Security     bearerAuth
 func (h *Handler) UpdatePack(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	packID := c.Param("packId")
 	if packID == "" {
@@ -385,10 +353,7 @@ func (h *Handler) UpdatePack(c echo.Context) error {
 // @Router       /api/schemas/{packId} [delete]
 // @Security     bearerAuth
 func (h *Handler) DeletePack(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	packID := c.Param("packId")
 	if packID == "" {
@@ -421,10 +386,6 @@ func (h *Handler) DeletePack(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/history [get]
 // @Security     bearerAuth
 func (h *Handler) GetSchemaHistory(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -453,10 +414,6 @@ func (h *Handler) GetSchemaHistory(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/validate [get]
 // @Security     bearerAuth
 func (h *Handler) ValidateObjects(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -486,10 +443,6 @@ func (h *Handler) ValidateObjects(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migrate [post]
 // @Security     bearerAuth
 func (h *Handler) MigrateTypes(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -528,10 +481,6 @@ func (h *Handler) MigrateTypes(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migrate/preview [post]
 // @Security     bearerAuth
 func (h *Handler) PreviewMigration(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -570,10 +519,6 @@ func (h *Handler) PreviewMigration(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migrate/execute [post]
 // @Security     bearerAuth
 func (h *Handler) ExecuteMigration(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -618,10 +563,6 @@ func (h *Handler) ExecuteMigration(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migrate/rollback [post]
 // @Security     bearerAuth
 func (h *Handler) RollbackMigration(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -660,10 +601,6 @@ func (h *Handler) RollbackMigration(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migrate/commit [post]
 // @Security     bearerAuth
 func (h *Handler) CommitMigrationArchive(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {
@@ -703,10 +640,6 @@ func (h *Handler) CommitMigrationArchive(c echo.Context) error {
 // @Router       /api/schemas/projects/{projectId}/migration-jobs/{jobId} [get]
 // @Security     bearerAuth
 func (h *Handler) GetMigrationJobStatus(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	projectID := c.Param("projectId")
 	if projectID == "" {

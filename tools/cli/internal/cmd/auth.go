@@ -509,7 +509,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Issuer:      %s\n", creds.IssuerURL)
 	}
 	if creds.IsExpired() {
-		const oauthClientID = "362800068257972227"
+		oauthClientID := auth.OAuthClientID()
 		refreshed := false
 		if creds.RefreshToken != "" && creds.IssuerURL != "" {
 			if oidcConfig, err := auth.DiscoverOIDC(creds.IssuerURL); err == nil {
@@ -1381,7 +1381,7 @@ removing all locally stored authentication state.`,
 var logoutCmd = newLogoutCmd()
 
 // oidcClientID is the OAuth client ID used for device flow authentication.
-const oidcClientID = "362800068257972227"
+var oidcClientID = auth.OAuthClientID()
 
 func runLogout(cmd *cobra.Command, args []string) error {
 	homeDir, err := os.UserHomeDir()

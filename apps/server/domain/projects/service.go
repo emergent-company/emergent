@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"go.uber.org/fx"
+
 	"github.com/emergent-company/emergent.memory/domain/agents"
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
@@ -44,24 +46,28 @@ type Service struct {
 	log          *slog.Logger
 }
 
+// ServiceParams bundles dependencies for NewService.
+type ServiceParams struct {
+	fx.In
+
+	Repo      *Repository
+	AgentRepo *agents.Repository
+	Log       *slog.Logger
+
+	// Optional cross-domain dependencies (nil-safe when not wired).
+	TokenRevoker TokenRevoker `optional:"true"`
+	BranchReader BranchReader `optional:"true"`
+}
+
 // NewService creates a new project service
-func NewService(repo *Repository, agentRepo *agents.Repository, log *slog.Logger) *Service {
+func NewService(p ServiceParams) *Service {
 	return &Service{
-		repo:      repo,
-		agentRepo: agentRepo,
-		log:       log.With(logger.Scope("projects.svc")),
+		repo:         p.Repo,
+		agentRepo:    p.AgentRepo,
+		tokenRevoker: p.TokenRevoker,
+		branchReader: p.BranchReader,
+		log:          p.Log.With(logger.Scope("projects.svc")),
 	}
-}
-
-// SetTokenRevoker wires in the token revoker (called from the projects module after both
-// projects and apitoken modules are initialized).
-func (s *Service) SetTokenRevoker(r TokenRevoker) {
-	s.tokenRevoker = r
-}
-
-// SetBranchReader wires in the branch reader so that project responses include main_branch_id.
-func (s *Service) SetBranchReader(r BranchReader) {
-	s.branchReader = r
 }
 
 // ServiceListParams defines parameters for listing projects

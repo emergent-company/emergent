@@ -10,14 +10,19 @@
 
 ## 2. Auth Middleware Consolidation (pkg/auth)
 
-- [ ] 2.1 Add `GetProjectUUID(c echo.Context) (uuid.UUID, error)` to `apps/server/pkg/auth/context.go`
-- [ ] 2.2 Add `RequireProject() echo.MiddlewareFunc` to `apps/server/pkg/auth/middleware.go`
-- [ ] 2.3 Add `MustGetUser(c echo.Context) *auth.User` to `apps/server/pkg/auth/context.go`
-- [ ] 2.4 Remove local `getProjectID()` helper from `domain/chunks/handler.go` — replace with `auth.GetProjectUUID(c)`
-- [ ] 2.5 Remove local `getProjectID()` helper from `domain/journal/handler.go` — replace with `auth.GetProjectUUID(c)`
-- [ ] 2.6 Remove local `getProjectID()` helper from `domain/graph/handler.go` — replace with `auth.GetProjectUUID(c)`
-- [ ] 2.7 Apply `RequireProject()` middleware to route groups in all domains — remove inline `user == nil` auth guard blocks from handler methods (batch by domain; one sub-task per domain group)
-- [ ] 2.8 Verify build passes and all auth-protected routes return 401 for unauthenticated requests: `task build && task test`
+> Re-sync (Sep 2026): helpers **exist** but are **never applied** — `RequireProject()` has 0 route usages, and 312 `user == nil` guards remain in 46 files. **Correction:** routes are *already* behind `auth.Middleware.RequireAuth()` + `RequireProjectID()`. The 312 guards are redundant defense-in-depth — this track is now **deletion**, not middleware rollout.
+
+- [x] 2.1 Add `GetProjectUUID(c echo.Context) (uuid.UUID, error)` — now in `pkg/auth/middleware.go:969`
+- [x] 2.2 Add `RequireProject() echo.MiddlewareFunc` — now in `pkg/auth/middleware.go:983` (but see 2.7: redundant, retire it)
+- [x] 2.3 Add `MustGetUser(c echo.Context) *AuthUser` — now in `pkg/auth/middleware.go:959`
+- [ ] 2.4 Remove local `getProjectID()` helper from `domain/chunks/handler.go:25` — replace with `auth.GetProjectUUID(c)` (already a thin wrapper)
+- [ ] 2.5 Remove local `getProjectID()` helper from `domain/journal/handler.go:169` — replace with `auth.GetProjectUUID(c)`
+- [ ] 2.6 Remove local `getProjectID()` helper from `domain/graph/handler.go:83` — replace with `auth.GetProjectUUID(c)`
+- [ ] 2.7 Replace 312 inline `user := auth.GetUser(c); if user == nil { return apperror.ErrUnauthorized }` guards with `user := auth.MustGetUser(c)` — batch by domain, only for handlers behind `RequireAuth()`/`RequireProjectID()`. Handle the 4 no-`routes.go` domains (`extraction`, `useraccess`, `invites`, `events`) individually.
+- [ ] 2.8 Retire unused package-level `RequireProject()` (0 usages) — delete or document as deprecated in favor of `auth.Middleware.RequireAuth()`
+- [ ] 2.9 Verify build passes and all auth-protected routes return 401 for unauthenticated requests: `task build && task test`
+
+> **DONE (Sep 2026):** 304 standard guards replaced (164 → `MustGetUser`, 140 removed as dead where `user` was unused). 10 remaining are correct edge cases (tuple-return helpers, DB-lookup nil checks, `agentcompat` custom errors, `invites` login redirect). 3 `getProjectID()` wrappers deleted (49 call sites → `auth.GetProjectUUID`). `RequireProject()` deleted. Build + vet + unit tests pass.
 
 ## 3. apperror Style Standardization
 
@@ -29,57 +34,69 @@
 
 ## 4. Worker Lifecycle Helper (domain/extraction)
 
-- [ ] 4.1 Create `apps/server/domain/extraction/worker.go` — define `Worker` interface with `Start(context.Context) error` and `Stop(context.Context) error`
-- [ ] 4.2 Add `RegisterWorkerLifecycle(lc fx.Lifecycle, w Worker)` function to `worker.go`
-- [ ] 4.3 Verify all 6 extraction workers (`GraphEmbeddingWorker`, `GraphRelationshipEmbeddingWorker`, `ChunkEmbeddingWorker`, `DocumentParsingWorker`, `ObjectExtractionWorker`, `EmbeddingSweepWorker`) satisfy the `Worker` interface
-- [ ] 4.4 Replace all 6 `lc.Append(fx.Hook{...})` blocks in `extraction/module.go` with `RegisterWorkerLifecycle(lc, worker)` calls
+> Re-sync (Sep 2026): `Worker` interface + `RegisterWorkerLifecycle` **exist** (`domain/extraction/worker.go:15,23`), but 3 `lc.Append(fx.Hook{...})` blocks still remain in `module.go` (lines 129, 377, 423).
+
+- [x] 4.1 Create `apps/server/domain/extraction/worker.go` — define `Worker` interface with `Start(context.Context) error` and `Stop(context.Context) error`
+- [x] 4.2 Add `RegisterWorkerLifecycle(lc fx.Lifecycle, w Worker)` function to `worker.go`
+- [x] 4.3 Verify all extraction workers satisfy the `Worker` interface
+- [ ] 4.4 Replace remaining 3 `lc.Append(fx.Hook{...})` blocks in `extraction/module.go` (lines 129, 377, 423) with `RegisterWorkerLifecycle(lc, worker)` calls
 - [ ] 4.5 Verify build passes: `task build`
 
 ## 5. Explicit Domain Interfaces (setter injection removal)
 
-- [ ] 5.1 Define `AgentToolDispatcher` interface in `domain/mcp` — match method signature currently used via `SetAgentToolHandler`
-- [ ] 5.2 Define `EmbeddingWorkerController` interface in `domain/mcp` — match method signature currently used via `SetEmbeddingControlHandler`
-- [ ] 5.3 Define `GraphObjectPatcher` interface in `domain/mcp` — match method signature currently used via `SetGraphObjectPatcher`
-- [ ] 5.4 Define `SessionTitleHandler` interface in `domain/mcp` — match method signature currently used via `SetSessionTitleHandler`
-- [ ] 5.5 Define `ToolPoolInvalidator` interface in `domain/mcpregistry` — match method signature currently used via `SetToolPoolInvalidator`
-- [ ] 5.6 Define `OrgToolPoolInvalidator` interface in `domain/orgs` — match method signature currently used via `SetToolPoolInvalidator`
-- [ ] 5.7 Define `SessionChangeHandler` interface in `domain/mcprelay` — match method signature currently used via `OnChange`
-- [ ] 5.8 Update `domain/mcp` constructor(s) to accept the 4 interfaces as parameters (remove `SetXxx` methods)
-- [ ] 5.9 Update `domain/mcpregistry` constructor to accept `ToolPoolInvalidator` as parameter (remove `SetToolPoolInvalidator`)
-- [ ] 5.10 Update `domain/orgs` constructor to accept `OrgToolPoolInvalidator` as parameter (remove `SetToolPoolInvalidator`)
-- [ ] 5.11 Update `domain/mcprelay` constructor to accept `SessionChangeHandler` as parameter (remove `OnChange` setter)
-- [ ] 5.12 Update `cmd/server/main.go` — wire concrete agent/extraction/graph types to the new interfaces via `fx.Provide` or `fx.Annotate`; remove all `SetXxx()` calls from `fx.Invoke` blocks
-- [ ] 5.13 Verify build passes and server starts cleanly: `task build && task start && task status`
+> **DONE (Sep 2026).** All 21 cross-domain `SetXxx` wiring setters removed and replaced with interfaces injected via `fx` constructor params (`fx.In` optional fields + `fx.Provide` adapters in `module.go`/`main.go`). `mcp.Service` (13), `projects` (2), `mcpregistry` (1), `orgs` (1), `blueprints` (1), `sandbox` (1), `agents.MCPToolHandler` (2). `mcp.GraphObjectPatcher` is a named func type. Build + vet + unit tests pass.
+>
+> **Left as-is (out of scope):** `mcprelay.Service.OnChange(...)` (§5.7/§5.11) — it's an event-subscription callback, not a dependency-injection setter; no interface extracted.
+
+- [x] 5.1–5.13 Setter injection removed (21 setters → constructor injection)
 
 ## 6. Graph/Journal Decoupling (GraphEventSink)
 
-- [ ] 6.1 Create `apps/server/domain/graph/events.go` — define `EventSink` interface with methods matching all current `s.journal.Log*(...)` call sites in `graph/service.go`
-- [ ] 6.2 Add `NoopEventSink` struct to `events.go` implementing `EventSink` with no-op method bodies
-- [ ] 6.3 Replace `*journal.Service` field in `graph.Service` struct with `EventSink` field; initialize default to `NoopEventSink{}`
-- [ ] 6.4 Replace all `s.journal.Log*(...)` calls with `s.eventSink.Log*(...)` calls; remove all `if s.journal != nil` nil-guards
-- [ ] 6.5 Verify `domain/graph` no longer imports `domain/journal`: `go list -deps ./domain/graph/... | grep journal` should return nothing
-- [ ] 6.6 Update `domain/journal/service.go` — add methods to satisfy `graph.EventSink` interface (or verify existing methods already match signatures)
-- [ ] 6.7 Update `domain/graph/module.go` — accept optional `graph.EventSink` via fx; wire `journal.Service` as the concrete implementation when journal is enabled
-- [ ] 6.8 Update `cmd/server/main.go` if needed to wire journal → graph event sink
-- [ ] 6.9 Verify build passes and graph mutations are still logged: `task build && task test`
+> Re-sync (Sep 2026): **DONE** — shipped outside this change. `domain/graph/events.go` defines `EventSink` + `NoopEventSink`; `domain/journal/graph_sink.go` provides `GraphEventSinkAdapter`.
+
+- [x] 6.1 Create `apps/server/domain/graph/events.go` — define `EventSink` interface
+- [x] 6.2 Add `NoopEventSink` struct
+- [x] 6.3 Replace `*journal.Service` field with `EventSink`; default `NoopEventSink{}`
+- [x] 6.4 Replace `s.journal.Log*(...)` calls with `s.eventSink.Log*(...)`
+- [x] 6.5 Verify `domain/graph` no longer imports `domain/journal`
+- [x] 6.6 Add `GraphEventSinkAdapter` in `domain/journal/graph_sink.go`
+- [x] 6.7 Wire journal → graph event sink via fx
+- [x] 6.8 Update `cmd/server/main.go` wiring
+- [x] 6.9 Verify graph mutations still logged
 
 ## 7. Feature Flag Infrastructure (FeatureSet + conditional fx.Options)
 
-- [ ] 7.1 Audit `/api/chat` route usage in `emergent.memory.ui` repo to answer open question: `grep -r "api/chat" /root/emergent.memory.ui/src/`
-- [ ] 7.2 Create `apps/server/internal/config/features.go` — define `FeatureSet` struct with env-var tags and defaults per design doc
-- [ ] 7.3 Add `Features FeatureSet` field to main `Config` struct in `internal/config/config.go`
-- [ ] 7.4 Refactor `cmd/server/main.go` — extract `coreFxOptions()` function containing all always-on domain modules
-- [ ] 7.5 Add conditional `fx.Options` blocks in `main.go` for each feature-flagged domain: `agents`, `mcp`, `mcpregistry`, `mcprelay`, `sandbox`, `sandboximages`, `backups`, `monitoring`, `tracing`, `devtools`, `superadmin`, `chat`
-- [ ] 7.6 Verify default behavior unchanged — start server with no `FEATURE_*` env vars, confirm all routes work: `task build && task start && task status`
-- [ ] 7.7 Verify feature toggle works — start server with `FEATURE_AGENTS=false`, confirm agents routes return 404 and server starts cleanly
-- [ ] 7.8 Document `FEATURE_*` env vars in `apps/server/README.md` or equivalent config documentation
+> Re-sync (Sep 2026): **DONE** — `internal/config/features.go` defines `FeatureSet`; `cmd/server/main.go` uses `coreFxOptions()` + `featureFxOptions(f)`. Note: `FEATURE_CHAT` defaults to `true` (not `false` as originally designed) — chat is live.
+
+- [x] 7.1 Audit `/api/chat` route usage — chat is LIVE: wired in `main.go`, has `pkg/sdk/chat` client, used by `cmd/swiftbridge`
+- [x] 7.2 Create `apps/server/internal/config/features.go` — `FeatureSet` struct
+- [x] 7.3 Add `Features FeatureSet` field to `Config`
+- [x] 7.4 Refactor `cmd/server/main.go` — `coreFxOptions()` + `featureFxOptions(f)`
+- [x] 7.5 Add conditional `fx.Options` blocks for feature-flagged domains
+- [x] 7.6 Verify default behavior unchanged
+- [x] 7.7 Verify feature toggle works
+- [x] 7.8 Document `FEATURE_*` env vars
 
 ## 8. Verification & Cleanup
 
 - [ ] 8.1 Run full test suite: `task test`
 - [ ] 8.2 Run e2e tests: `task test:e2e`
 - [ ] 8.3 Run linter: `task lint`
-- [ ] 8.4 Confirm no `SetXxx` setter methods remain for cross-domain wiring: `grep -r "func.*Set[A-Z]" apps/server/domain/`
-- [ ] 8.5 Confirm no inline `user == nil` auth guards remain in handler files: `grep -rn "user == nil" apps/server/domain/`
-- [ ] 8.6 Confirm `APIResponse`, `PaginatedResponse`, `SuccessResponse` defined only in `pkg/httputil`: `grep -rn "type APIResponse" apps/server/`
-- [ ] 8.7 Confirm no Style A `apperror` usage remains: `grep -rn "\.WithMessage\|\.WithInternal" apps/server/domain/`
+- [ ] 8.4 Confirm no cross-domain `SetXxx` setter methods remain: `grep -r "func.*Set[A-Z]" apps/server/domain/` (21 remain, see §5)
+- [ ] 8.5 Confirm no inline `user == nil` auth guards remain: `grep -rn "user == nil" apps/server/domain/` (312 remain)
+- [ ] 8.6 Confirm `APIResponse`, `PaginatedResponse`, `SuccessResponse` defined only in `pkg/httputil` (residue: 4 domain aliases + `superadmin` + `pkg/sdk`)
+- [ ] 8.7 Confirm no Style A `apperror` usage remains: `grep -rn "\.WithMessage\|\.WithInternal" apps/server/domain/` (1168 remain)
+
+## 9. Prevention Layer (L3) — stop re-introduction
+
+> Re-sync (Sep 2026): **NEW.** The existing `.golangci.yml` disables `errcheck`, `staticcheck`, and `unused` via blanket `text: "."` exclusions — the linter is a no-op. Debt grew 3 months straight with zero gates. This track makes the cleanup stick.
+
+- [x] 9.1 Remove the three blanket `text: "."` exclusions for `errcheck`, `staticcheck`, `unused`; replace with targeted `exclude-rules` only for confirmed-legacy violations (or a `//nolint` per-line baseline)
+- [x] 9.2 Add a custom `golangci-lint` check (or `forbidigo`/`revive` rule) that fails CI on inline `user == nil` auth guards in `domain/*/handler.go` — force `RequireProject()` + `MustGetUser()`
+- [x] 9.3 Add a rule failing on new `func (s *Service) Set[A-Z]` cross-domain setters — force constructor/`fx.Provide` injection
+- [x] 9.4 Add a rule failing on new `type APIResponse|PaginatedResponse|SuccessResponse` definitions outside `pkg/httputil`
+- [x] 9.5 Add a rule failing on new `apperror.Err*.With*` Style A chaining — force Style B `apperror.New*`
+- [x] 9.6 Wire the rules into CI (lefthook pre-commit + a CI job) so violations block merge, not just flag
+- [x] 9.7 Re-run `task lint` and get a clean baseline; record the current violation counts as the ratchet floor
+
+> **DONE (Sep 2026):** §9 implemented as a grep-based ratchet rather than custom golangci plugins. `.golangci.yml` migrated to v2 + un-masked (148 staticcheck / 48 unused / 2 gofmt now visible). CI lint job uses `only-new-issues: true` + `fetch-depth: 0`. `apps/server/scripts/lint-ratchet.sh` gates the 4 structural patterns against baselines (auth guards 10, setters 21, Style-A 1167, response-type dupes 6); wired into lefthook pre-commit + the CI lint job.

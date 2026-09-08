@@ -341,10 +341,7 @@ func (h *Handler) HandleDownloadMCPBundle(c echo.Context) error {
 // @Router       /api/projects/{projectId}/mcp/bundle [get]
 // @Security     bearerAuth
 func (h *Handler) HandleGenerateMCPBundle(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
+	user := auth.MustGetUser(c)
 
 	projectID := c.Param("projectId")
 	if projectID == "" {

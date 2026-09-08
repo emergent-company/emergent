@@ -6,7 +6,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
-	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
 // Handler handles embedding policy HTTP requests
@@ -101,10 +100,6 @@ func (h *Handler) GetByID(c echo.Context) error {
 // @Router       /api/graph/embedding-policies [post]
 // @Security     bearerAuth
 func (h *Handler) Create(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user == nil {
-		return apperror.ErrUnauthorized
-	}
 
 	var req CreateRequest
 	if err := c.Bind(&req); err != nil {

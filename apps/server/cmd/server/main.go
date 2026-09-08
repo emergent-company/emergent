@@ -1,7 +1,7 @@
 // Package main provides the entry point for the Memory API server
 //
 // @title Memory API
-// @version 0.57.2
+// @version 0.63.0
 // @description Memory Knowledge Base API - AI-powered knowledge management system
 // @contact.name Memory Team
 // @contact.url https://emergent-company.ai
@@ -186,14 +186,14 @@ func coreFxOptions() fx.Option {
 		// Documentation API (serves markdown files from docs/public)
 		docs.Module,
 
-		// Cross-domain wiring: give projects.Service access to revoke tokens on member removal
-		fx.Invoke(func(svc *projects.Service, tokenRepo *apitoken.Repository) {
-			svc.SetTokenRevoker(tokenRepo)
+		// Cross-domain wiring: expose apitoken.Repository as projects.TokenRevoker
+		fx.Provide(func(tokenRepo *apitoken.Repository) projects.TokenRevoker {
+			return tokenRepo
 		}),
 
-		// Cross-domain wiring: give projects.Service access to branch store for main_branch_id
-		fx.Invoke(func(svc *projects.Service, branchStore *branches.Store) {
-			svc.SetBranchReader(branchStore)
+		// Cross-domain wiring: expose branches.Store as projects.BranchReader
+		fx.Provide(func(branchStore *branches.Store) projects.BranchReader {
+			return branchStore
 		}),
 	)
 }
@@ -206,31 +206,20 @@ func featureFxOptions(f config.FeatureSet) []fx.Option {
 	if f.Agents {
 		opts = append(opts, agents.Module)
 		opts = append(opts, agentcompat.Module)
-		// Cross-domain wiring: give the agents MCP tool handler access to
-		// extraction jobs and graph-embedding jobs so remember-status can follow
-		// queue-reextraction calls to the async extraction jobs that perform the
-		// actual graph mutations, and report embedding readiness for the created
-		// objects. Wired here (not in agents or extraction modules) because
-		// agents → extraction → projects → agents is an import cycle and
-		// extraction.Module is loaded even when the Agents feature is off.
-		opts = append(opts, fx.Invoke(func(handler *agents.MCPToolHandler, extractionFinder mcp.ExtractionJobFinder, embeddingFinder mcp.EmbeddingJobFinder) {
-			handler.SetExtractionJobFinder(extractionFinder)
-			handler.SetEmbeddingJobFinder(embeddingFinder)
-		}))
-		// Wire agent definitions into blueprint apply (agents feature only).
-		opts = append(opts, fx.Invoke(func(svc *blueprints.Service, agentRepo *agents.Repository) {
-			svc.SetAgentRepo(agentRepo)
+		// Expose agents.Repository as blueprints.AgentRepo (agents feature only).
+		opts = append(opts, fx.Provide(func(agentRepo *agents.Repository) blueprints.AgentRepo {
+			return agentRepo
 		}))
 	}
 	if f.MCP {
 		opts = append(opts, mcp.Module)
 		// Cross-domain wiring: set_session_title writes title to graph object Properties
 		// so clients using the graph API can read the updated title.
-		opts = append(opts, fx.Invoke(func(mcpSvc *mcp.Service, graphSvc *graph.Service) {
-			mcpSvc.SetGraphObjectPatcher(graphSvc.PatchGraphObjectTitle)
+		opts = append(opts, fx.Provide(func(graphSvc *graph.Service) mcp.GraphObjectPatcher {
+			return graphSvc.PatchGraphObjectTitle
 		}))
-		opts = append(opts, fx.Invoke(func(mcpSvc *mcp.Service, agentsRepo *agents.Repository) {
-			mcpSvc.SetSessionHistoryProvider(agentsRepo)
+		opts = append(opts, fx.Provide(func(agentsRepo *agents.Repository) mcp.SessionHistoryProvider {
+			return agentsRepo
 		}))
 	}
 	if f.MCPRegistry {

@@ -9,19 +9,30 @@ import (
 func RegisterRoutes(e *echo.Echo, handler *Handler, authMiddleware *auth.Middleware) {
 	// Organization-level backup management
 	org := e.Group("/api/v1/organizations/:orgId")
+	org.Use(authMiddleware.RequireAuth())
 	{
 		org.GET("/backups", handler.ListBackups)
 		org.GET("/backups/:backupId", handler.GetBackup)
 		org.GET("/backups/:backupId/download", handler.DownloadBackup)
 		org.DELETE("/backups/:backupId", handler.DeleteBackup)
+		// Clone restore: creates a new project in this org from a backup.
+		org.POST("/restore", handler.RestoreBackup)
 	}
 
 	// Project-level backup creation and restore
 	projects := e.Group("/api/v1/projects/:projectId")
+	projects.Use(authMiddleware.RequireAuth())
 	{
 		projects.POST("/backups", handler.CreateBackup)
+		// Overwrite restore: replaces this project with the backup snapshot.
 		projects.POST("/restore", handler.RestoreBackup)
-		projects.GET("/restores/:restoreId", handler.GetRestoreStatus)
+	}
+
+	// Top-level restore job status (clone may cross orgs)
+	restores := e.Group("/api/v1/restores")
+	restores.Use(authMiddleware.RequireAuth())
+	{
+		restores.GET("/:restoreId", handler.GetRestoreStatus)
 	}
 
 	// Superadmin: database-level backup management

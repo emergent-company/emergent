@@ -16,10 +16,10 @@ var Module = fx.Module("discoveryjobs",
 		NewRepository,
 		NewService,
 		NewHandler,
+		provideDiscoveryServiceWithMCP,
 	),
 	fx.Invoke(
 		RegisterRoutes,
-		registerDiscoveryServiceWithMCP,
 	),
 )
 
@@ -35,8 +35,8 @@ func NewService(repo *Repository, docSvc *documents.Service, cfg *config.Config,
 	}
 }
 
-// registerDiscoveryServiceWithMCP injects the discovery service into the MCP service
+// provideDiscoveryServiceWithMCP exposes the discovery service as mcp.DiscoveryFinalizer
 // so the finalize-discovery tool is available to agents.
-func registerDiscoveryServiceWithMCP(mcpService *mcp.Service, svc *Service) {
-	mcpService.SetDiscoveryService(svc)
+func provideDiscoveryServiceWithMCP(svc *Service) mcp.DiscoveryFinalizer {
+	return svc
 }
