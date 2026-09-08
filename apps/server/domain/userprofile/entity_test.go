@@ -1,6 +1,7 @@
 package userprofile
 
 import (
+	"net/url"
 	"testing"
 	"time"
 )
@@ -107,6 +108,52 @@ func TestProfile_ToDTO(t *testing.T) {
 			}
 			if tt.profile.AvatarObjectKey != nil && dto.AvatarObjectKey != nil && *dto.AvatarObjectKey != *tt.profile.AvatarObjectKey {
 				t.Errorf("AvatarObjectKey = %q, want %q", *dto.AvatarObjectKey, *tt.profile.AvatarObjectKey)
+			}
+		})
+	}
+}
+
+func TestProfile_ToDTO_AvatarUrl(t *testing.T) {
+	key := "avatars/abc-123.png"
+	empty := ""
+
+	tests := []struct {
+		name      string
+		avatarKey *string
+		want      string
+	}{
+		{
+			name:      "avatar key present sets avatar url",
+			avatarKey: &key,
+			want:      "/api/user/avatar?v=" + url.QueryEscape(key),
+		},
+		{
+			name:      "nil avatar key leaves avatar url empty",
+			avatarKey: nil,
+			want:      "",
+		},
+		{
+			name:      "empty avatar key leaves avatar url empty",
+			avatarKey: &empty,
+			want:      "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			profile := &Profile{
+				ID:              "profile-1",
+				ZitadelUserID:   "zitadel-1",
+				AvatarObjectKey: tt.avatarKey,
+			}
+
+			dto := profile.ToDTO("user@example.com")
+
+			if dto.AvatarUrl != tt.want {
+				t.Errorf("AvatarUrl = %q, want %q", dto.AvatarUrl, tt.want)
+			}
+			if tt.avatarKey == nil && dto.AvatarObjectKey != nil {
+				t.Errorf("AvatarObjectKey = %v, want nil", dto.AvatarObjectKey)
 			}
 		})
 	}

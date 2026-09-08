@@ -2,22 +2,49 @@ package userprofile
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"strings"
 
+	"github.com/google/uuid"
+
+	"github.com/emergent-company/emergent.memory/internal/storage"
+	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
 
+// profileRepo is the subset of Repository used by the service. Defined as an
+// interface so tests can substitute a fake without a database connection.
+type profileRepo interface {
+	GetByID(ctx context.Context, id string) (*Profile, error)
+	GetByZitadelUserID(ctx context.Context, zitadelUserID string) (*Profile, error)
+	Update(ctx context.Context, id string, req *UpdateProfileRequest) (*Profile, error)
+	GetEmail(ctx context.Context, userID string) (string, error)
+	SetAvatar(ctx context.Context, id string, key *string) error
+}
+
+// avatarStore is the subset of storage.Service used for avatar objects.
+// Defined as an interface so tests can substitute a fake without an S3 client.
+type avatarStore interface {
+	Upload(ctx context.Context, key string, data io.Reader, size int64, opts storage.UploadOptions) (*storage.UploadResult, error)
+	Delete(ctx context.Context, key string) error
+	Download(ctx context.Context, key string) (io.ReadCloser, error)
+	Enabled() bool
+}
+
 // Service handles business logic for user profiles
 type Service struct {
-	repo *Repository
-	log  *slog.Logger
+	repo    profileRepo
+	storage avatarStore
+	log     *slog.Logger
 }
 
 // NewService creates a new user profile service
-func NewService(repo *Repository, log *slog.Logger) *Service {
+func NewService(repo *Repository, storage *storage.Service, log *slog.Logger) *Service {
 	return &Service{
-		repo: repo,
-		log:  log.With(logger.Scope("userprofile.svc")),
+		repo:    repo,
+		storage: storage,
+		log:     log.With(logger.Scope("userprofile.svc")),
 	}
 }
 
@@ -61,4 +88,123 @@ func (s *Service) Update(ctx context.Context, id string, req *UpdateProfileReque
 
 	dto := profile.ToDTO(email)
 	return &dto, nil
+}
+
+// UploadAvatar uploads a new avatar image for the profile, replacing (and
+// deleting) any previously stored avatar object. Returns the updated profile DTO.
+func (s *Service) UploadAvatar(ctx context.Context, id string, data io.Reader, size int64, contentType string) (*ProfileDTO, error) {
+	if !s.storage.Enabled() {
+		return nil, apperror.ErrInternal.WithMessage("storage disabled")
+	}
+
+	ext, ok := avatarExtForContentType(contentType)
+	if !ok {
+		return nil, apperror.ErrBadRequest.WithMessage("unsupported image type")
+	}
+	key := "avatars/" + uuid.New().String() + ext
+
+	// Get the current profile first so the previous avatar object can be
+	// cleaned up after the new one is in place.
+	profile, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if profile.AvatarObjectKey != nil && *profile.AvatarObjectKey != "" {
+		if delErr := s.storage.Delete(ctx, *profile.AvatarObjectKey); delErr != nil {
+			s.log.Warn("failed to delete previous avatar object",
+				slog.String("key", *profile.AvatarObjectKey),
+				logger.Error(delErr),
+			)
+		}
+	}
+
+	if _, err := s.storage.Upload(ctx, key, data, size, storage.UploadOptions{ContentType: contentType}); err != nil {
+		return nil, apperror.ErrInternal.WithInternal(err)
+	}
+
+	if err := s.repo.SetAvatar(ctx, id, &key); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, id)
+}
+
+// RemoveAvatar deletes the profile's avatar object (if any) and clears the
+// reference. Returns the updated profile DTO.
+func (s *Service) RemoveAvatar(ctx context.Context, id string) (*ProfileDTO, error) {
+	profile, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if profile.AvatarObjectKey != nil && *profile.AvatarObjectKey != "" {
+		if delErr := s.storage.Delete(ctx, *profile.AvatarObjectKey); delErr != nil {
+			// S3 deletes are idempotent, but a fake/other backend may report a
+			// missing object. The reference must be cleared regardless.
+			s.log.Warn("failed to delete avatar object",
+				slog.String("key", *profile.AvatarObjectKey),
+				logger.Error(delErr),
+			)
+		}
+	}
+
+	if err := s.repo.SetAvatar(ctx, id, nil); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, id)
+}
+
+// GetAvatar streams the profile's avatar image body. Returns the object body
+// and its content type. Returns ErrNotFound when the profile has no avatar.
+func (s *Service) GetAvatar(ctx context.Context, id string) (io.ReadCloser, string, error) {
+	profile, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if profile.AvatarObjectKey == nil || *profile.AvatarObjectKey == "" {
+		return nil, "", apperror.ErrNotFound.WithMessage("user has no avatar")
+	}
+
+	body, err := s.storage.Download(ctx, *profile.AvatarObjectKey)
+	if err != nil {
+		return nil, "", apperror.ErrInternal.WithInternal(err)
+	}
+
+	return body, avatarContentTypeForKey(*profile.AvatarObjectKey), nil
+}
+
+// avatarExtForContentType maps an allowed image content type to its storage
+// key extension. Returns false for unsupported types.
+func avatarExtForContentType(contentType string) (string, bool) {
+	switch contentType {
+	case "image/png":
+		return ".png", true
+	case "image/jpeg":
+		return ".jpg", true
+	case "image/webp":
+		return ".webp", true
+	case "image/gif":
+		return ".gif", true
+	default:
+		return "", false
+	}
+}
+
+// avatarContentTypeForKey derives the served content type from the avatar
+// object key extension.
+func avatarContentTypeForKey(key string) string {
+	switch {
+	case strings.HasSuffix(key, ".png"):
+		return "image/png"
+	case strings.HasSuffix(key, ".jpg"), strings.HasSuffix(key, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(key, ".webp"):
+		return "image/webp"
+	case strings.HasSuffix(key, ".gif"):
+		return "image/gif"
+	default:
+		return "application/octet-stream"
+	}
 }

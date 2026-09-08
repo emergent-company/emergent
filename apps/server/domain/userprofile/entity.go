@@ -1,6 +1,7 @@
 package userprofile
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -33,6 +34,7 @@ type ProfileDTO struct {
 	DisplayName     *string `json:"displayName,omitempty"`
 	PhoneE164       *string `json:"phoneE164,omitempty"`
 	AvatarObjectKey *string `json:"avatarObjectKey,omitempty"`
+	AvatarUrl       string  `json:"avatarUrl,omitempty"`
 	Email           string  `json:"email,omitempty"`
 }
 
@@ -46,7 +48,7 @@ type UpdateProfileRequest struct {
 
 // ToDTO converts a Profile entity to ProfileDTO
 func (p *Profile) ToDTO(email string) ProfileDTO {
-	return ProfileDTO{
+	dto := ProfileDTO{
 		ID:              p.ID,
 		SubjectID:       p.ZitadelUserID,
 		ZitadelUserID:   &p.ZitadelUserID,
@@ -57,4 +59,12 @@ func (p *Profile) ToDTO(email string) ProfileDTO {
 		AvatarObjectKey: p.AvatarObjectKey,
 		Email:           email,
 	}
+
+	// Avatar URL points at the internal avatar endpoint; the object key is used
+	// as a cache-busting query param so replacing the avatar changes the URL.
+	if p.AvatarObjectKey != nil && *p.AvatarObjectKey != "" {
+		dto.AvatarUrl = "/api/user/avatar?v=" + url.QueryEscape(*p.AvatarObjectKey)
+	}
+
+	return dto
 }
