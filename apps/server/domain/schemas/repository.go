@@ -70,6 +70,16 @@ func (r *Repository) GetCompiledTypesByProject(ctx context.Context, projectID st
 
 		tp := pp.MemorySchema
 
+		// Type-level UI config may be declared either inline per type (a "ui"
+		// key inside the object type schema, as blueprint manifests write it)
+		// or in the pack's top-level ui_configs map (typeName → {icon, color}),
+		// which the schema registry surfaces today. Prefer the inline form and
+		// fall back to ui_configs so both conventions reach the compiled view.
+		uiConfigs := map[string]json.RawMessage{}
+		if len(tp.UIConfigs) > 0 {
+			_ = json.Unmarshal(tp.UIConfigs, &uiConfigs)
+		}
+
 		// Parse object type schemas (supports both array and map storage formats)
 		if len(tp.ObjectTypeSchemas) > 0 {
 			objectTypes := parseObjectTypeSchemas(tp.ObjectTypeSchemas, tp.ID, tp.Name, tp.Version)
@@ -78,6 +88,11 @@ func (r *Repository) GetCompiledTypesByProject(ctx context.Context, projectID st
 					slog.String("packId", tp.ID))
 			} else {
 				for i := range objectTypes {
+					if len(objectTypes[i].UI) == 0 {
+						if cfg, ok := uiConfigs[objectTypes[i].Name]; ok {
+							objectTypes[i].UI = cfg
+						}
+					}
 					if prevIdx, seen := seenObjIdx[objectTypes[i].Name]; seen {
 						// Mark the earlier one as shadowed
 						response.ObjectTypes[prevIdx].Shadowed = true
@@ -383,6 +398,7 @@ func parseObjectTypeSchemas(data json.RawMessage, packID, packName, packVersion 
 			Label       string          `json:"label"`
 			Description string          `json:"description"`
 			Properties  json.RawMessage `json:"properties"`
+			UI          json.RawMessage `json:"ui"`
 		}
 		_ = json.Unmarshal(raw, &def)
 		result = append(result, ObjectTypeSchema{
@@ -390,6 +406,7 @@ func parseObjectTypeSchemas(data json.RawMessage, packID, packName, packVersion 
 			Label:         def.Label,
 			Description:   def.Description,
 			Properties:    def.Properties,
+			UI:            def.UI,
 			SchemaID:      packID,
 			SchemaName:    packName,
 			SchemaVersion: packVersion,
@@ -416,6 +433,7 @@ func parseObjectTypeSchemasToMap(data json.RawMessage) map[string]json.RawMessag
 		Label       string          `json:"label"`
 		Description string          `json:"description"`
 		Properties  json.RawMessage `json:"properties"`
+		UI          json.RawMessage `json:"ui"`
 	}
 	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
 		result := make(map[string]json.RawMessage, len(arr))
@@ -428,6 +446,9 @@ func parseObjectTypeSchemasToMap(data json.RawMessage) map[string]json.RawMessag
 			schema := map[string]json.RawMessage{}
 			if len(item.Properties) > 0 {
 				schema["properties"] = item.Properties
+			}
+			if len(item.UI) > 0 {
+				schema["ui"] = item.UI
 			}
 			if item.Label != "" {
 				lb, _ := json.Marshal(item.Label)

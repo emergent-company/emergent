@@ -60,6 +60,7 @@ type ObjectTypeSchema struct {
 	Label         string          `json:"label,omitempty"`
 	Description   string          `json:"description,omitempty"`
 	Properties    json.RawMessage `json:"properties,omitempty"`
+	UI            json.RawMessage `json:"ui,omitempty"` // type-level ui block (e.g. {"icon":...,"color":...})
 	SchemaID      string          `json:"schemaId,omitempty"`
 	SchemaName    string          `json:"schemaName,omitempty"`
 	SchemaVersion string          `json:"schemaVersion,omitempty"`

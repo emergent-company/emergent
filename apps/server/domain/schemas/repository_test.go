@@ -16,7 +16,7 @@ func TestParseObjectTypeSchemas(t *testing.T) {
 	t.Run("array format", func(t *testing.T) {
 		data := json.RawMessage(`[
 			{"name":"Belief","label":"Belief","description":"A belief","properties":{"text":{"type":"string"}}},
-			{"name":"Person","label":"Person"}
+			{"name":"Person","label":"Person","ui":{"icon":"lucide--user","color":"#4F46E5"}}
 		]`)
 
 		got := parseObjectTypeSchemas(data, packID, packName, packVersion)
@@ -42,12 +42,18 @@ func TestParseObjectTypeSchemas(t *testing.T) {
 		if !names["Belief"] || !names["Person"] {
 			t.Errorf("expected type names Belief and Person, got %v", names)
 		}
+		// inline ui block is carried through to the compiled type
+		for _, o := range got {
+			if o.Name == "Person" && string(o.UI) != `{"icon":"lucide--user","color":"#4F46E5"}` {
+				t.Errorf("expected ui block on Person, got %s", o.UI)
+			}
+		}
 	})
 
 	t.Run("map format (blueprint/epf-engine v3)", func(t *testing.T) {
 		data := json.RawMessage(`{
 			"Belief":  {"label":"Belief","description":"A belief","properties":{"text":{"type":"string"}}},
-			"Person":  {"label":"Person","description":"A person"}
+			"Person":  {"label":"Person","description":"A person","ui":{"icon":"lucide--user","color":"#4F46E5"}}
 		}`)
 
 		got := parseObjectTypeSchemas(data, packID, packName, packVersion)
@@ -66,6 +72,12 @@ func TestParseObjectTypeSchemas(t *testing.T) {
 		}
 		if !names["Belief"] || !names["Person"] {
 			t.Errorf("expected type names Belief and Person, got %v", names)
+		}
+		// inline ui block is carried through to the compiled type
+		for _, o := range got {
+			if o.Name == "Person" && string(o.UI) != `{"icon":"lucide--user","color":"#4F46E5"}` {
+				t.Errorf("expected ui block on Person, got %s", o.UI)
+			}
 		}
 	})
 
