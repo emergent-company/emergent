@@ -34,7 +34,7 @@ type ProfileDTO struct {
 	DisplayName     *string `json:"displayName,omitempty"`
 	PhoneE164       *string `json:"phoneE164,omitempty"`
 	AvatarObjectKey *string `json:"avatarObjectKey,omitempty"`
-	AvatarUrl       string  `json:"avatarUrl,omitempty"`
+	AvatarURL       string  `json:"avatarUrl,omitempty"`
 	Email           string  `json:"email,omitempty"`
 }
 
@@ -63,7 +63,7 @@ func (p *Profile) ToDTO(email string) ProfileDTO {
 	// Avatar URL points at the internal avatar endpoint; the object key is used
 	// as a cache-busting query param so replacing the avatar changes the URL.
 	if p.AvatarObjectKey != nil && *p.AvatarObjectKey != "" {
-		dto.AvatarUrl = "/api/user/avatar?v=" + url.QueryEscape(*p.AvatarObjectKey)
+		dto.AvatarURL = "/api/user/avatar?v=" + url.QueryEscape(*p.AvatarObjectKey)
 	}
 
 	return dto

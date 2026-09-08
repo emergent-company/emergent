@@ -94,7 +94,7 @@ func (s *Service) Update(ctx context.Context, id string, req *UpdateProfileReque
 // deleting) any previously stored avatar object. Returns the updated profile DTO.
 func (s *Service) UploadAvatar(ctx context.Context, id string, data io.Reader, size int64, contentType string) (*ProfileDTO, error) {
 	if !s.storage.Enabled() {
-		return nil, apperror.ErrInternal.WithMessage("storage disabled")
+		return nil, apperror.ErrServiceUnavailable.WithMessage("storage disabled")
 	}
 
 	ext, ok := avatarExtForContentType(contentType)
@@ -109,21 +109,35 @@ func (s *Service) UploadAvatar(ctx context.Context, id string, data io.Reader, s
 	if err != nil {
 		return nil, err
 	}
-	if profile.AvatarObjectKey != nil && *profile.AvatarObjectKey != "" {
+
+	// Upload the new object before touching the stored reference so a failed
+	// upload leaves the previous avatar untouched.
+	if _, err := s.storage.Upload(ctx, key, data, size, storage.UploadOptions{ContentType: contentType}); err != nil {
+		return nil, apperror.ErrInternal.WithInternal(err)
+	}
+
+	// Persist the new key. On failure, best-effort remove the just-uploaded
+	// object so it is not orphaned; the profile still references the old key,
+	// which remains valid.
+	if err := s.repo.SetAvatar(ctx, id, &key); err != nil {
+		if delErr := s.storage.Delete(ctx, key); delErr != nil {
+			s.log.Warn("failed to clean up avatar object after persist failure",
+				slog.String("key", key),
+				logger.Error(delErr),
+			)
+		}
+		return nil, err
+	}
+
+	// The previous object can now be removed. Failure is non-fatal: the new
+	// avatar is already live and the orphan is a storage-hygiene concern.
+	if profile.AvatarObjectKey != nil && *profile.AvatarObjectKey != "" && *profile.AvatarObjectKey != key {
 		if delErr := s.storage.Delete(ctx, *profile.AvatarObjectKey); delErr != nil {
 			s.log.Warn("failed to delete previous avatar object",
 				slog.String("key", *profile.AvatarObjectKey),
 				logger.Error(delErr),
 			)
 		}
-	}
-
-	if _, err := s.storage.Upload(ctx, key, data, size, storage.UploadOptions{ContentType: contentType}); err != nil {
-		return nil, apperror.ErrInternal.WithInternal(err)
-	}
-
-	if err := s.repo.SetAvatar(ctx, id, &key); err != nil {
-		return nil, err
 	}
 
 	return s.GetByID(ctx, id)
@@ -138,13 +152,15 @@ func (s *Service) RemoveAvatar(ctx context.Context, id string) (*ProfileDTO, err
 	}
 
 	if profile.AvatarObjectKey != nil && *profile.AvatarObjectKey != "" {
-		if delErr := s.storage.Delete(ctx, *profile.AvatarObjectKey); delErr != nil {
-			// S3 deletes are idempotent, but a fake/other backend may report a
-			// missing object. The reference must be cleared regardless.
+		// Delete the object before clearing the reference. If deletion fails the
+		// reference is kept so a client retry can succeed, instead of the profile
+		// pointing at a key whose object still exists in storage.
+		if err := s.storage.Delete(ctx, *profile.AvatarObjectKey); err != nil {
 			s.log.Warn("failed to delete avatar object",
 				slog.String("key", *profile.AvatarObjectKey),
-				logger.Error(delErr),
+				logger.Error(err),
 			)
+			return nil, apperror.ErrInternal.WithInternal(err)
 		}
 	}
 

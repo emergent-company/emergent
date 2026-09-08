@@ -20,7 +20,7 @@ import (
 // ---------------------------------------------------------------------------
 
 var (
-	testPNGBytes = append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, bytes.Repeat([]byte{0x00}, 64)...)
+	testPNGBytes  = append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, bytes.Repeat([]byte{0x00}, 64)...)
 	testJPEGBytes = append([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01}, bytes.Repeat([]byte{0x00}, 64)...)
 	testSVGBytes  = []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>`)
 	testTextBytes = []byte("plain text, not an image")
@@ -100,7 +100,7 @@ func TestUpload_ValidPNG_ReturnsProfile(t *testing.T) {
 	if dto.AvatarObjectKey == nil || *dto.AvatarObjectKey == "" {
 		t.Fatalf("expected avatar object key in response, got %v", dto.AvatarObjectKey)
 	}
-	if dto.AvatarUrl == "" {
+	if dto.AvatarURL == "" {
 		t.Errorf("expected avatarUrl in response")
 	}
 }
@@ -164,7 +164,9 @@ func TestUpload_Oversize_Rejected(t *testing.T) {
 	store := newFakeAvatarStore(true)
 	h := newAvatarTestHandler(t, repo, store)
 
-	oversize := append(testPNGBytes, bytes.Repeat([]byte{0x00}, maxAvatarSize+1)...)
+	// Pad well past maxAvatarSize so the whole multipart body exceeds the
+	// MaxBytesReader cap, not just the file contents.
+	oversize := append(testPNGBytes, bytes.Repeat([]byte{0x00}, maxAvatarSize+2048)...)
 	body, ct := multipartAvatarBody(t, oversize)
 	c, rec := newAvatarEchoContext(http.MethodPut, body, ct, "profile-1")
 
@@ -253,8 +255,8 @@ func TestDeleteAvatar_ClearsAvatar(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &dto); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
-	if dto.AvatarObjectKey != nil || dto.AvatarUrl != "" {
-		t.Errorf("expected cleared avatar in response, got key=%v url=%q", dto.AvatarObjectKey, dto.AvatarUrl)
+	if dto.AvatarObjectKey != nil || dto.AvatarURL != "" {
+		t.Errorf("expected cleared avatar in response, got key=%v url=%q", dto.AvatarObjectKey, dto.AvatarURL)
 	}
 	if strings.Contains(rec.Body.String(), "avatarUrl") {
 		t.Errorf("expected avatarUrl omitted from response, body: %s", rec.Body.String())

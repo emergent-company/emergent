@@ -3,9 +3,12 @@ package userprofile
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/emergent-company/emergent.memory/internal/storage"
@@ -18,8 +21,9 @@ import (
 
 // fakeProfileRepo is an in-memory profileRepo implementation.
 type fakeProfileRepo struct {
-	profiles map[string]Profile
-	email    string
+	profiles     map[string]Profile
+	email        string
+	setAvatarErr error
 }
 
 func newFakeProfileRepo() *fakeProfileRepo {
@@ -108,6 +112,9 @@ func (f *fakeProfileRepo) GetEmail(_ context.Context, _ string) (string, error) 
 }
 
 func (f *fakeProfileRepo) SetAvatar(_ context.Context, id string, key *string) error {
+	if f.setAvatarErr != nil {
+		return f.setAvatarErr
+	}
 	p, ok := f.profiles[id]
 	if !ok {
 		return apperror.ErrNotFound.WithMessage("user profile not found")
@@ -198,7 +205,7 @@ func assertAppErrorStatus(t *testing.T, err error, wantStatus int) {
 	}
 }
 
-func wantAvatarUrl(key string) string {
+func wantAvatarURL(key string) string {
 	return "/api/user/avatar?v=" + url.QueryEscape(key)
 }
 
@@ -228,8 +235,8 @@ func TestService_UploadAvatar_StoresKeyAndReturnsDTO(t *testing.T) {
 	if key[len(key)-len(".png"):] != ".png" {
 		t.Errorf("key = %q, want suffix %q", key, ".png")
 	}
-	if dto.AvatarUrl != wantAvatarUrl(key) {
-		t.Errorf("AvatarUrl = %q, want %q", dto.AvatarUrl, wantAvatarUrl(key))
+	if dto.AvatarURL != wantAvatarURL(key) {
+		t.Errorf("AvatarURL = %q, want %q", dto.AvatarURL, wantAvatarURL(key))
 	}
 
 	// Object is present in storage and profile row is updated.
@@ -287,7 +294,75 @@ func TestService_UploadAvatar_StorageDisabled(t *testing.T) {
 	svc := newTestAvatarService(repo, store)
 
 	_, err := svc.UploadAvatar(context.Background(), "profile-1", bytes.NewReader([]byte("data")), 4, "image/png")
+	assertAppErrorStatus(t, err, http.StatusServiceUnavailable)
+}
+
+func TestService_UploadAvatar_UploadFails_KeepsExistingAvatar(t *testing.T) {
+	oldKey := "avatars/old-avatar.png"
+	repo := newFakeProfileRepo()
+	repo.seed(Profile{ID: "profile-1", ZitadelUserID: "zitadel-1", AvatarObjectKey: &oldKey})
+	store := newFakeAvatarStore(true)
+	store.objects[oldKey] = []byte("old image")
+	store.uploadErr = errors.New("upload failed")
+	svc := newTestAvatarService(repo, store)
+
+	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+	_, err := svc.UploadAvatar(context.Background(), "profile-1", bytes.NewReader(png), int64(len(png)), "image/png")
 	assertAppErrorStatus(t, err, 500)
+
+	// The old object must survive a failed upload and the profile must keep
+	// referencing it.
+	if _, ok := store.objects[oldKey]; !ok {
+		t.Errorf("existing avatar object %q was deleted despite failed upload", oldKey)
+	}
+	if len(store.deletedKeys) != 0 {
+		t.Errorf("expected no storage deletes, got %v", store.deletedKeys)
+	}
+	got, err := repo.GetByID(context.Background(), "profile-1")
+	if err != nil {
+		t.Fatalf("GetByID returned error: %v", err)
+	}
+	if got.AvatarObjectKey == nil || *got.AvatarObjectKey != oldKey {
+		t.Errorf("profile avatar key = %v, want %q", got.AvatarObjectKey, oldKey)
+	}
+}
+
+func TestService_UploadAvatar_PersistFails_DeletesNewObject(t *testing.T) {
+	oldKey := "avatars/old-avatar.png"
+	repo := newFakeProfileRepo()
+	repo.setAvatarErr = errors.New("persist failed")
+	repo.seed(Profile{ID: "profile-1", ZitadelUserID: "zitadel-1", AvatarObjectKey: &oldKey})
+	store := newFakeAvatarStore(true)
+	store.objects[oldKey] = []byte("old image")
+	svc := newTestAvatarService(repo, store)
+
+	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+	_, err := svc.UploadAvatar(context.Background(), "profile-1", bytes.NewReader(png), int64(len(png)), "image/png")
+	if err == nil {
+		t.Fatal("expected UploadAvatar to fail")
+	}
+
+	// The just-uploaded object must be cleaned up best-effort and the old
+	// avatar must be untouched.
+	if len(store.objects) != 1 {
+		t.Errorf("expected only the old object to remain, got %d objects", len(store.objects))
+	}
+	if _, ok := store.objects[oldKey]; !ok {
+		t.Errorf("existing avatar object %q was deleted", oldKey)
+	}
+	if len(store.deletedKeys) != 1 {
+		t.Fatalf("expected exactly one cleanup delete, got %v", store.deletedKeys)
+	}
+	if store.deletedKeys[0] == oldKey || !strings.HasPrefix(store.deletedKeys[0], "avatars/") {
+		t.Errorf("cleanup delete key = %q, want the newly uploaded key", store.deletedKeys[0])
+	}
+	got, err := repo.GetByID(context.Background(), "profile-1")
+	if err != nil {
+		t.Fatalf("GetByID returned error: %v", err)
+	}
+	if got.AvatarObjectKey == nil || *got.AvatarObjectKey != oldKey {
+		t.Errorf("profile avatar key = %v, want %q", got.AvatarObjectKey, oldKey)
+	}
 }
 
 func TestService_RemoveAvatar_ClearsKeyAndDeletesObject(t *testing.T) {
@@ -309,8 +384,8 @@ func TestService_RemoveAvatar_ClearsKeyAndDeletesObject(t *testing.T) {
 	if dto.AvatarObjectKey != nil {
 		t.Errorf("AvatarObjectKey = %q, want nil", *dto.AvatarObjectKey)
 	}
-	if dto.AvatarUrl != "" {
-		t.Errorf("AvatarUrl = %q, want empty", dto.AvatarUrl)
+	if dto.AvatarURL != "" {
+		t.Errorf("AvatarURL = %q, want empty", dto.AvatarURL)
 	}
 	got, err := repo.GetByID(context.Background(), "profile-1")
 	if err != nil {
@@ -331,8 +406,8 @@ func TestService_RemoveAvatar_NoAvatar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveAvatar returned error: %v", err)
 	}
-	if dto.AvatarObjectKey != nil || dto.AvatarUrl != "" {
-		t.Errorf("expected no avatar in DTO, got key=%v url=%q", dto.AvatarObjectKey, dto.AvatarUrl)
+	if dto.AvatarObjectKey != nil || dto.AvatarURL != "" {
+		t.Errorf("expected no avatar in DTO, got key=%v url=%q", dto.AvatarObjectKey, dto.AvatarURL)
 	}
 }
 

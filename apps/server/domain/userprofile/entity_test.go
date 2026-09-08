@@ -113,7 +113,7 @@ func TestProfile_ToDTO(t *testing.T) {
 	}
 }
 
-func TestProfile_ToDTO_AvatarUrl(t *testing.T) {
+func TestProfile_ToDTO_AvatarURL(t *testing.T) {
 	key := "avatars/abc-123.png"
 	empty := ""
 
@@ -149,8 +149,8 @@ func TestProfile_ToDTO_AvatarUrl(t *testing.T) {
 
 			dto := profile.ToDTO("user@example.com")
 
-			if dto.AvatarUrl != tt.want {
-				t.Errorf("AvatarUrl = %q, want %q", dto.AvatarUrl, tt.want)
+			if dto.AvatarURL != tt.want {
+				t.Errorf("AvatarURL = %q, want %q", dto.AvatarURL, tt.want)
 			}
 			if tt.avatarKey == nil && dto.AvatarObjectKey != nil {
 				t.Errorf("AvatarObjectKey = %v, want nil", dto.AvatarObjectKey)

@@ -2,6 +2,7 @@ package userprofile
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 
@@ -124,8 +125,16 @@ func (h *Handler) Upload(c echo.Context) error {
 		return apperror.ErrUnauthorized
 	}
 
+	// Enforce the byte limit before the multipart body is parsed to temp disk.
+	// Headroom above maxAvatarSize covers multipart framing overhead.
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, maxAvatarSize+1024)
+
 	file, err := c.FormFile("file")
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return apperror.New(http.StatusRequestEntityTooLarge, "avatar_too_large", "avatar image must be 512 KiB or smaller")
+		}
 		return apperror.ErrBadRequest.WithMessage("file is required")
 	}
 
