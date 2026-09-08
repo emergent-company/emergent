@@ -100,11 +100,18 @@ func TestStripModelPrefix(t *testing.T) {
 		in   string
 		want string
 	}{
+		// Single-segment routing prefixes are stripped.
+		{"deepseek/deepseek-v4-flash", "deepseek-v4-flash"},
 		{"openai/deepseek-v4-flash", "deepseek-v4-flash"},
 		{"google/gemini-embedding-2-preview", "gemini-embedding-2-preview"},
 		{"google-vertex/gemini-2.5-flash", "gemini-2.5-flash"},
+		// Bare names are returned unchanged.
 		{"deepseek-v4-pro", "deepseek-v4-pro"},
 		{"", ""},
+		// Multi-segment model IDs are NOT routing prefixes — keep them intact.
+		{"publishers/google/models/gemini-2.0-flash", "publishers/google/models/gemini-2.0-flash"},
+		{"locations/us-central1/publishers/google/models/gemini-2.5-flash", "locations/us-central1/publishers/google/models/gemini-2.5-flash"},
+		{"google/gemini-2.5-flash/experimental", "google/gemini-2.5-flash/experimental"},
 	}
 	for _, c := range cases {
 		if got := stripModelPrefix(c.in); got != c.want {

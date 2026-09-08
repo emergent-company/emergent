@@ -118,7 +118,15 @@ func (s *CredentialService) Resolve(ctx context.Context, provider ProviderType) 
 // an OpenAI-compatible LiteLLM proxy); the resolved credential must carry the
 // bare name because the prefix is a routing concern, not part of the model name
 // the provider API expects. A bare name (no slash) is returned unchanged.
+//
+// Only a name with exactly one '/' is treated as prefixed. Multi-segment model
+// IDs (e.g. Vertex-style "publishers/google/models/gemini-2.0-flash" or
+// "locations/us-central1/publishers/google/models/...") are returned unchanged —
+// their slashes are part of the resource path, not a routing prefix.
 func stripModelPrefix(model string) string {
+	if strings.Count(model, "/") != 1 {
+		return model
+	}
 	if _, bare, ok := strings.Cut(model, "/"); ok {
 		return bare
 	}
@@ -436,15 +444,18 @@ func (s *CredentialService) UpsertProjectConfig(ctx context.Context, projectID s
 	}
 
 	// Validate explicitly-provided model names against the synced catalog
-	// (only meaningful when catalog sync succeeded).
+	// (only meaningful when catalog sync succeeded). The catalog stores bare
+	// model names — SyncModels runs against the stripped tempCred, so any
+	// routing prefix (e.g. "deepseek/deepseek-v4-flash" via a LiteLLM proxy)
+	// must be stripped here too or validation fails with "model not found".
 	if catalogSynced {
-		if req.GenerativeModel != "" {
-			if err := s.validateModelInCatalog(ctx, provider, req.GenerativeModel, ModelTypeGenerative); err != nil {
+		if bare := stripModelPrefix(req.GenerativeModel); bare != "" {
+			if err := s.validateModelInCatalog(ctx, provider, bare, ModelTypeGenerative); err != nil {
 				return nil, err
 			}
 		}
-		if req.EmbeddingModel != "" {
-			if err := s.validateModelInCatalog(ctx, provider, req.EmbeddingModel, ModelTypeEmbedding); err != nil {
+		if bare := stripModelPrefix(req.EmbeddingModel); bare != "" {
+			if err := s.validateModelInCatalog(ctx, provider, bare, ModelTypeEmbedding); err != nil {
 				return nil, err
 			}
 		}
