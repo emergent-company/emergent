@@ -35,7 +35,7 @@ jobs:
       - name: golangci-lint (new issues only)
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.13.2
           working-directory: apps/server
           install-mode: goinstall
           only-new-issues: true
