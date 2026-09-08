@@ -34,7 +34,7 @@ jobs:
           cache-dependency-path: apps/server/pkg/sdk/go.sum
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
           install-mode: binary
