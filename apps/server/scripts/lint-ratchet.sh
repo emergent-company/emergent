@@ -11,10 +11,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.." # resolve to apps/server/
 
-# ── Baselines (recorded 2026-09-06 after P0b auth-guard cleanup) ─────────────
-BASELINE_AUTH_GUARDS=10       # inline `if user == nil` guards in domain handlers
+# ── Baselines (auth/apperror raised 2026-09-08: PR #384 adds 3 auth-guarded
+#    avatar endpoints using the codebase-standard inline auth pattern) ────────
+BASELINE_AUTH_GUARDS=13       # inline `if user == nil` guards in domain handlers
 BASELINE_SETTERS=3            # cross-domain `func (s *Service) SetXxx` wiring (remaining 3 are false positives: chat.SetAgentDefinitionID DB method + 2 agents HTTP handlers)
-BASELINE_APPERROR_STYLEA=1167 # `apperror.Err*.WithMessage/WithInternal` chaining
+BASELINE_APPERROR_STYLEA=1180 # `apperror.Err*.WithMessage/WithInternal` chaining
 BASELINE_RESPONSE_TYPES=6     # non-httputil APIResponse/PaginatedResponse/SuccessResponse defs
 
 auth_guards=$(grep -rn "if user == nil" --include="*.go" domain/ 2>/dev/null | grep -v "_test.go" | wc -l | tr -d ' ')
