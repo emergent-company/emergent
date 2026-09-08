@@ -48,7 +48,7 @@ func TestNewFromEnvIgnoresDotenvFiles(t *testing.T) {
 	}
 
 	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
+	defer func() { _ = os.Chdir(orig) }()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestNewFromEnvIgnoresDotenvFiles(t *testing.T) {
 
 func TestNewFromEnvProjectTokenOverridesAPIKey(t *testing.T) {
 	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
+	defer func() { _ = os.Chdir(orig) }()
 	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestNewFromEnvProjectTokenOverridesAPIKey(t *testing.T) {
 
 func TestNewFromEnvDeprecatedAPIKeyFallback(t *testing.T) {
 	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
+	defer func() { _ = os.Chdir(orig) }()
 	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestNewFromEnvDeprecatedAPIKeyFallback(t *testing.T) {
 
 func TestNewFromEnvDeprecatedProjectTokenFallback(t *testing.T) {
 	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
+	defer func() { _ = os.Chdir(orig) }()
 	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -142,7 +142,7 @@ func TestNewFromEnvDeprecatedProjectTokenFallback(t *testing.T) {
 
 func TestNewFromEnvNewNameWinsOverDeprecated(t *testing.T) {
 	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
+	defer func() { _ = os.Chdir(orig) }()
 	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
