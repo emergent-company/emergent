@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -112,6 +113,28 @@ func (r *Repository) ListProjectProviderConfigs(ctx context.Context, projectID s
 			slog.String("projectID", projectID),
 		)
 		return nil, apperror.ErrDatabase.WithInternal(err)
+	}
+	return cfgs, nil
+}
+
+// ListProjectProviderConfigsByProvider lists every project provider config of
+// the given provider across all projects. Includes the encrypted credential
+// columns (server-internal use — e.g. the catalog resync job that re-resolves
+// credentials). Callers must never serialize these configs to clients.
+func (r *Repository) ListProjectProviderConfigsByProvider(ctx context.Context, provider ProviderType) ([]ProjectProviderConfig, error) {
+	var cfgs []ProjectProviderConfig
+	err := r.db.NewSelect().
+		Model(&cfgs).
+		Where("provider = ?", provider).
+		Order("project_id ASC").
+		Scan(ctx)
+
+	if err != nil {
+		r.log.Error("failed to list project provider configs by provider",
+			logger.Error(err),
+			slog.String("provider", string(provider)),
+		)
+		return nil, fmt.Errorf("list project provider configs by provider %s: %w", provider, err)
 	}
 	return cfgs, nil
 }

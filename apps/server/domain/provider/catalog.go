@@ -19,9 +19,19 @@ import (
 	"github.com/emergent-company/emergent.memory/pkg/logger"
 )
 
+// modelCatalogRepo is the subset of Repository the model catalog service needs.
+// It is declared as an interface (satisfied by *Repository) so tests can
+// substitute an in-memory fake without a database.
+type modelCatalogRepo interface {
+	UpsertSupportedModels(ctx context.Context, models []ProviderSupportedModel) error
+	DeleteSupportedModelsNotIn(ctx context.Context, provider ProviderType, modelNames []string) error
+	ListSupportedModels(ctx context.Context, provider ProviderType, modelType *ModelType) ([]ProviderSupportedModel, error)
+	ListAllSupportedModels(ctx context.Context, modelType *ModelType) ([]ProviderSupportedModel, error)
+}
+
 // ModelCatalogService fetches and caches available models from provider APIs.
 type ModelCatalogService struct {
-	repo *Repository
+	repo modelCatalogRepo
 	log  *slog.Logger
 }
 
@@ -33,40 +43,20 @@ func NewModelCatalogService(repo *Repository, log *slog.Logger) *ModelCatalogSer
 	}
 }
 
-// SyncModels fetches the model catalog from the provider API using the given
-// credentials and persists them to the provider_supported_models cache.
-// If the API call fails (timeout or non-auth error), it falls back to a
-// static known-good model list.
+// SyncModels resolves the model catalog for the provider using the given
+// credentials and persists it to the provider_supported_models cache.
+//
+// Persistence is: upsert the resolved rows, then prune stale rows for the
+// provider — but only when the resolved set came from a complete, live catalog
+// fetch. When an OpenAI-compatible /v1/models fetch fails and a configured-model
+// fallback is used instead, the resolved set is a partial snapshot, so the sync
+// upserts only and never prunes: pruning a partial snapshot would delete rows
+// belonging to other configurations of the same provider.
 func (s *ModelCatalogService) SyncModels(ctx context.Context, provider ProviderType, cred *ResolvedCredential) error {
-	var models []ProviderSupportedModel
-
-	switch provider {
-	case ProviderOpenAI:
-		// OpenAI-compatible (incl. LiteLLM proxies): list the full model set
-		// exposed by GET {base_url}/models. Fall back to the configured model(s)
-		// when the proxy's model list is unreachable, so the user's selection is
-		// never lost.
-		fetched, err := s.fetchOpenAICompatibleModels(ctx, provider, cred)
-		if err != nil {
-			s.log.Warn("openai-compatible: /v1/models fetch failed, storing configured models only", logger.Error(err))
-			fetched = s.configuredOpenAIModels(provider, cred)
-		}
-		models = fetched
-
-	case ProviderDeepSeek:
-		// DeepSeek: use static model list (no live catalog fetch — the fixed
-		// endpoint lists only deepseek-chat/deepseek-reasoner and would prune
-		// the alfred-specific aliases).
-		models = staticModels(provider)
-
-	default:
-		fetched, err := s.fetchModelsFromAPI(ctx, provider, cred)
-		if err != nil {
-			return fmt.Errorf("failed to fetch model catalog from %s API: %w", provider, err)
-		}
-		models = fetched
+	models, pruneOK, err := s.ResolveModels(ctx, provider, cred)
+	if err != nil {
+		return err
 	}
-
 	if len(models) == 0 {
 		return fmt.Errorf("no models available for provider %s", provider)
 	}
@@ -75,13 +65,16 @@ func (s *ModelCatalogService) SyncModels(ctx context.Context, provider ProviderT
 		return err
 	}
 
+	if !pruneOK {
+		// Fallback snapshot: never prune. Stale-but-complete is strictly
+		// better than wiping the catalog down to the fallback rows.
+		return nil
+	}
+
 	// Remove any stale rows for this provider that were not returned by the
 	// current sync. This handles: model renames, retired models, and stale
 	// static-fallback rows left over from a previous failed API call.
-	names := make([]string, len(models))
-	for i, m := range models {
-		names[i] = m.ModelName
-	}
+	names := modelNames(models)
 	if err := s.repo.DeleteSupportedModelsNotIn(ctx, provider, names); err != nil {
 		// Non-fatal: stale rows are cosmetic, don't fail the whole sync.
 		s.log.Warn("failed to delete stale models after sync",
@@ -91,6 +84,70 @@ func (s *ModelCatalogService) SyncModels(ctx context.Context, provider ProviderT
 	}
 
 	return nil
+}
+
+// ResolveModels fetches the model catalog from the provider API using the given
+// credentials without persisting anything.
+//
+// It returns the resolved rows plus a pruneOK flag: pruneOK is true only when
+// the rows are a complete, authoritative view of the provider's catalog, so
+// callers may safely delete cached rows not present in the set. When an
+// OpenAI-compatible /v1/models fetch fails the function falls back to the
+// statically configured models and returns pruneOK=false — callers must then
+// upsert only, never prune, because the fallback snapshot is partial.
+//
+// The callers that combine multiple resolved sets (e.g. the periodic resync of
+// every OpenAI-compatible config) must union all configs before pruning against
+// the union, since the catalog table is keyed globally by (provider, model_name)
+// with no per-config dimension.
+func (s *ModelCatalogService) ResolveModels(ctx context.Context, provider ProviderType, cred *ResolvedCredential) (models []ProviderSupportedModel, pruneOK bool, err error) {
+	pruneOK = true
+
+	switch provider {
+	case ProviderOpenAI:
+		// OpenAI-compatible (incl. LiteLLM proxies): list the full model set
+		// exposed by GET {base_url}/models. Fall back to the configured model(s)
+		// when the proxy's model list is unreachable, so the user's selection is
+		// never lost. The fallback is a partial snapshot of this single config,
+		// so it must never drive a prune.
+		fetched, fetchErr := s.fetchOpenAICompatibleModels(ctx, provider, cred)
+		if fetchErr != nil {
+			s.log.Warn("openai-compatible: /v1/models fetch failed, storing configured models only", logger.Error(fetchErr))
+			fetched = s.configuredOpenAIModels(provider, cred)
+			pruneOK = false
+		}
+		models = fetched
+
+	case ProviderDeepSeek:
+		// DeepSeek: use static model list (no live catalog fetch — the fixed
+		// endpoint lists only deepseek-chat/deepseek-reasoner and would prune
+		// the alfred-specific aliases). The static list is authoritative, so
+		// pruning is safe.
+		models = staticModels(provider)
+
+	default:
+		fetched, fetchErr := s.fetchModelsFromAPI(ctx, provider, cred)
+		if fetchErr != nil {
+			return nil, false, fmt.Errorf("failed to fetch model catalog from %s API: %w", provider, fetchErr)
+		}
+		models = fetched
+	}
+
+	if len(models) == 0 {
+		return nil, false, fmt.Errorf("no models available for provider %s", provider)
+	}
+
+	return models, pruneOK, nil
+}
+
+// modelNames extracts the bare model names from a set of catalog rows, in the
+// same order, for use with DeleteSupportedModelsNotIn.
+func modelNames(models []ProviderSupportedModel) []string {
+	names := make([]string, len(models))
+	for i, m := range models {
+		names[i] = m.ModelName
+	}
+	return names
 }
 
 // ListModels returns the cached supported models for a provider,
