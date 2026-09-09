@@ -21,6 +21,7 @@ import (
 //   - *UsageService                 — async LLM usage event recording
 //   - *PricingSyncService           — daily pricing sync cron job
 //   - *ModelLimitsSyncService       — daily model output token limits sync from models.dev
+//   - *ModelCatalogSyncService      — periodic re-sync of OpenAI-compatible provider model catalogs
 //   - adk.CredentialResolver        — adapts CredentialService to pkg/adk interface
 var Module = fx.Module("provider",
 	fx.Provide(
@@ -31,6 +32,7 @@ var Module = fx.Module("provider",
 		provideUsageService,
 		providePricingSyncService,
 		provideModelLimitsSyncService,
+		provideModelCatalogSyncService,
 		provideADKCredentialAdapter,
 		provideUsageTrackerAdapter,
 		provideModelLimitAdapter,
@@ -39,6 +41,7 @@ var Module = fx.Module("provider",
 	fx.Invoke(
 		runStartupPricingSync,
 		runStartupModelLimitsSync,
+		runStartupModelCatalogSync,
 		RegisterRoutes,
 	),
 )
@@ -71,6 +74,10 @@ func provideModelLimitsSyncService(repo *Repository, sched *scheduler.Scheduler,
 	return NewModelLimitsSyncService(repo, sched, log)
 }
 
+func provideModelCatalogSyncService(repo *Repository, credsvc *CredentialService, catalog *ModelCatalogService, sched *scheduler.Scheduler, log *slog.Logger) *ModelCatalogSyncService {
+	return NewModelCatalogSyncService(repo, credsvc, catalog, sched, log)
+}
+
 // runStartupPricingSync performs an initial pricing sync on server startup.
 // This ensures the pricing table is populated on first run without waiting
 // for the next daily cron execution.
@@ -96,6 +103,22 @@ func runStartupModelLimitsSync(lc fx.Lifecycle, limitsSync *ModelLimitsSyncServi
 			go func() {
 				if err := limitsSync.Sync(ctx); err != nil {
 					log.Warn("startup model limits sync failed", slog.String("error", err.Error()))
+				}
+			}()
+			return nil
+		},
+	})
+}
+
+// runStartupModelCatalogSync performs an initial OpenAI-compatible provider
+// catalog re-sync on server startup, so catalogs are fresh from first boot
+// instead of waiting for the first 6-hourly cron pass.
+func runStartupModelCatalogSync(lc fx.Lifecycle, catalogSync *ModelCatalogSyncService, log *slog.Logger) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := catalogSync.Sync(ctx); err != nil {
+					log.Warn("startup model catalog sync failed", slog.String("error", err.Error()))
 				}
 			}()
 			return nil

@@ -3,10 +3,18 @@
 // credentials (domain/provider) — credential setup (API keys) and model
 // selection (which model to use) are independent concerns.
 //
-// Resolution chain (generative and embedding):
+// Resolution chain (generative):
 //  1. Per-agent override (AgentDefinition.Model.Name) — handled by executor, not here
 //  2. Project model config (kb.project_model_config)
-//  3. No org fallback — if no project config, callers receive ModelSourceNone and must error.
+//  3. Provider-credential generative model (set via 'memory provider
+//     configure-project <provider> --generative-model <model>') — the same
+//     fallback the executor uses when no project config is set
+//  4. No org fallback — if nothing resolves, callers receive ModelSourceNone
+//     and must surface a "model not configured" error to the user.
+//
+// Resolution chain (embedding):
+//  1. Project model config (kb.project_model_config)
+//  2. No fallback — if no project config, callers receive ModelSourceNone.
 //
 // Model names must always include a provider prefix: "provider/model-name"
 // (e.g. "deepseek/deepseek-v4-flash", "google/gemini-2.5-flash").
@@ -50,6 +58,10 @@ type ModelSource string
 
 const (
 	ModelSourceProject ModelSource = "project"
+	// ModelSourceProvider means no project model config was set, but a project
+	// provider credential carries a generative model — the executor's fallback
+	// (same model a run would use).
+	ModelSourceProvider ModelSource = "provider"
 	// ModelSourceNone means no config was found at the project level.
 	// Callers must treat this as "not configured" and return an appropriate error.
 	ModelSourceNone ModelSource = "none"

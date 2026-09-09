@@ -437,3 +437,128 @@ func TestPickEmbeddingConfig_RespectsOrder(t *testing.T) {
 		t.Errorf("picked = %+v, want ProviderGoogleAI first", picked)
 	}
 }
+
+// TestPrefixedGenerativeModelName is a regression test for double-stripping:
+// decryptProjectConfig already runs stored models through stripModelPrefix
+// (single-slash prefixes stripped, multi-segment Vertex resource paths kept
+// intact), so DefaultGenerativeModel's name building must prefix the provider
+// without a second Cut that would corrupt "publishers/google/models/..." into
+// "google/models/...".
+func TestPrefixedGenerativeModelName(t *testing.T) {
+	cases := []struct {
+		name     string
+		provider ProviderType
+		gen      string
+		want     string
+	}{
+		{
+			name:     "single-slash prefixed name is stripped then re-prefixed",
+			provider: ProviderOpenAI,
+			gen:      "openai/gpt-4o",
+			want:     "openai/gpt-4o",
+		},
+		{
+			name:     "foreign single-slash prefix is replaced by routing provider",
+			provider: ProviderOpenAI,
+			gen:      "deepseek/deepseek-v4-flash",
+			want:     "openai/deepseek-v4-flash",
+		},
+		{
+			name:     "bare name is unchanged",
+			provider: ProviderGoogleAI,
+			gen:      "gemini-2.5-flash",
+			want:     "google/gemini-2.5-flash",
+		},
+		{
+			name:     "multi-segment Vertex path is prefixed intact, not double-cut",
+			provider: ProviderVertexAI,
+			gen:      "publishers/google/models/gemini-2.5-flash",
+			want:     "google-vertex/publishers/google/models/gemini-2.5-flash",
+		},
+		{
+			name:     "multi-segment Vertex path with location is prefixed intact",
+			provider: ProviderVertexAI,
+			gen:      "locations/us-central1/publishers/google/models/gemini-2.5-flash",
+			want:     "google-vertex/locations/us-central1/publishers/google/models/gemini-2.5-flash",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := prefixedGenerativeModelName(tc.provider, tc.gen); got != tc.want {
+				t.Errorf("prefixedGenerativeModelName(%q, %q) = %q, want %q", tc.provider, tc.gen, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDefaultGenerativeModelName_DecryptAndBuild wires the real decrypt path
+// (encrypt → ProjectProviderConfig → decryptProjectConfig) into the name
+// builder, proving the provider-credential fallback reports intact model names
+// for both prefixed and multi-segment Vertex values.
+func TestDefaultGenerativeModelName_DecryptAndBuild(t *testing.T) {
+	hexKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	enc, _ := crypto.NewEncryptor(hexKey)
+	saJSON := `{"type":"service_account","project_id":"test"}`
+	ciphertext, nonce, _ := enc.Encrypt([]byte(saJSON))
+
+	cfg := &config.Config{
+		LLMProvider: config.LLMProviderConfig{
+			EncryptionKey: hexKey,
+		},
+	}
+	svc := NewCredentialService(nil, NewRegistry(), nil, cfg, slog.Default())
+
+	cases := []struct {
+		name string
+		cfg  *ProjectProviderConfig
+		want string
+	}{
+		{
+			name: "vertex multi-segment path stored bare stays intact",
+			cfg: &ProjectProviderConfig{
+				Provider:            ProviderVertexAI,
+				EncryptedCredential: ciphertext,
+				EncryptionNonce:     nonce,
+				GenerativeModel:     "publishers/google/models/gemini-2.5-flash",
+			},
+			want: "google-vertex/publishers/google/models/gemini-2.5-flash",
+		},
+		{
+			name: "vertex single-slash prefixed name is stripped then re-prefixed once",
+			cfg: &ProjectProviderConfig{
+				Provider:            ProviderVertexAI,
+				EncryptedCredential: ciphertext,
+				EncryptionNonce:     nonce,
+				GenerativeModel:     "google-vertex/gemini-2.5-flash",
+			},
+			want: "google-vertex/gemini-2.5-flash",
+		},
+		{
+			name: "openai prefixed name keeps provider once",
+			cfg: &ProjectProviderConfig{
+				Provider:            ProviderOpenAI,
+				EncryptedCredential: ciphertext,
+				EncryptionNonce:     nonce,
+				GenerativeModel:     "openai/gpt-4o",
+			},
+			want: "openai/gpt-4o",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cred, err := svc.decryptProjectConfig(tc.cfg)
+			if err != nil {
+				t.Fatalf("decryptProjectConfig failed: %v", err)
+			}
+			if cred == nil || cred.GenerativeModel == "" {
+				t.Fatal("expected a resolved credential with a generative model")
+			}
+			if got := prefixedGenerativeModelName(cred.Provider, cred.GenerativeModel); got != tc.want {
+				t.Errorf("decrypt+build = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

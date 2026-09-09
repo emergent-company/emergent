@@ -1278,6 +1278,18 @@ func (h *Handler) ReceiveWebhook(c echo.Context) error {
 // --- Agent Definition Handlers ---
 
 // ListDefinitions handles GET /api/projects/:projectId/agent-definitions
+// @Summary      List agent definitions
+// @Description  Returns all agent definitions for a project, each with the effective generative model it would run with (per-agent override when set, else the project's resolved default)
+// @Tags         agent-definitions
+// @Accept       json
+// @Produce      json
+// @Param        projectId path string true "Project ID (UUID)"
+// @Success      200 {object} APIResponse[[]AgentDefinitionSummaryDTO] "List of agent definitions"
+// @Failure      400 {object} apperror.Error "Invalid project ID"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/projects/{projectId}/agent-definitions [get]
+// @Security     bearerAuth
 func (h *Handler) ListDefinitions(c echo.Context) error {
 	user := auth.MustGetUser(c)
 
@@ -1295,15 +1307,45 @@ func (h *Handler) ListDefinitions(c echo.Context) error {
 		return apperror.NewInternal("failed to list agent definitions", err)
 	}
 
+	// Resolve the project's generative default once — the whole list shares one
+	// project, so per-item resolution would be N+1. Each agent's own override
+	// (when set) still takes precedence over the default.
+	projectDefault := ""
+	if h.modelResolver != nil && projectID != "" {
+		if m, _, rerr := h.modelResolver.ResolveGenerativeModelByID(c.Request().Context(), projectID); rerr == nil {
+			projectDefault = m
+		}
+	}
+
 	dtos := make([]*AgentDefinitionSummaryDTO, len(definitions))
 	for i, def := range definitions {
-		dtos[i] = def.ToSummaryDTO()
+		dto := def.ToSummaryDTO()
+		var override string
+		if def.Model != nil {
+			override = def.Model.Name
+		}
+		dto.EffectiveModel = pickEffectiveModel(override, projectDefault)
+		dtos[i] = dto
 	}
 
 	return c.JSON(http.StatusOK, SuccessResponse(dtos))
 }
 
 // GetDefinition handles GET /api/projects/:projectId/agent-definitions/:id
+// @Summary      Get agent definition by ID
+// @Description  Returns an agent definition with its effective generative model resolved (per-agent override when set, else project config → provider-credential generative model)
+// @Tags         agent-definitions
+// @Accept       json
+// @Produce      json
+// @Param        projectId path string true "Project ID (UUID)"
+// @Param        id path string true "Agent Definition ID (UUID)"
+// @Success      200 {object} APIResponse[AgentDefinitionDTO] "Agent definition details"
+// @Failure      400 {object} apperror.Error "Invalid project ID or definition ID"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      404 {object} apperror.Error "Agent definition not found"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/projects/{projectId}/agent-definitions/{id} [get]
+// @Security     bearerAuth
 func (h *Handler) GetDefinition(c echo.Context) error {
 	user := auth.MustGetUser(c)
 
@@ -1327,20 +1369,35 @@ func (h *Handler) GetDefinition(c echo.Context) error {
 
 	dto := def.ToDTO()
 
-	// Enrich with effective model (project → org → env resolution).
+	// Effective model = what this definition will run with. The per-agent
+	// override is honored by the executor regardless of project config, so it
+	// is reported unconditionally. Without an override, fall back to the
+	// project's resolved generative default (project config →
+	// provider-credential generative model); it may be empty only when the
+	// project is truly unconfigured.
+	var projectDefault string
 	if h.modelResolver != nil {
-		resolved, _, err := h.modelResolver.ResolveGenerativeModelByID(c.Request().Context(), def.ProjectID)
-		if err == nil && resolved != "" {
-			// Per-agent override takes precedence over resolved default.
-			if dto.Model == nil || dto.Model.Name == "" {
-				dto.EffectiveModel = resolved
-			} else {
-				dto.EffectiveModel = dto.Model.Name
-			}
+		if resolved, _, err := h.modelResolver.ResolveGenerativeModelByID(c.Request().Context(), def.ProjectID); err == nil {
+			projectDefault = resolved
 		}
 	}
+	var override string
+	if dto.Model != nil {
+		override = dto.Model.Name
+	}
+	dto.EffectiveModel = pickEffectiveModel(override, projectDefault)
 
 	return c.JSON(http.StatusOK, SuccessResponse(dto))
+}
+
+// pickEffectiveModel applies the precedence rule shared by GET and LIST agent
+// definitions: a per-agent override always wins; otherwise the project's
+// resolved generative default is reported (may be empty when unconfigured).
+func pickEffectiveModel(override, projectDefault string) string {
+	if override != "" {
+		return override
+	}
+	return projectDefault
 }
 
 // CreateDefinition handles POST /api/projects/:projectId/agent-definitions
