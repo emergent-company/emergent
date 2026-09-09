@@ -5244,7 +5244,7 @@ func (s *Service) executeRemember(ctx context.Context, projectID string, args ma
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("remember: server returned %d", resp.StatusCode)
+		return nil, mcpHTTPError("remember", resp)
 	}
 
 	// Async mode returns a 202 JSON body {run_id, status, document_id} instead of SSE.
@@ -5341,7 +5341,7 @@ func (s *Service) executeForget(ctx context.Context, projectID string, args map[
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("forget: server returned %d", resp.StatusCode)
+		return nil, mcpHTTPError("forget", resp)
 	}
 
 	// Async mode returns a 202 JSON body {run_id, status, document_id} instead of SSE.

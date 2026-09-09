@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -131,7 +133,7 @@ func (s *Service) executeQueryKnowledge(ctx context.Context, projectID string, a
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("query_knowledge: server returned %d", resp.StatusCode)
+		return nil, mcpHTTPError("query_knowledge", resp)
 	}
 
 	// Collect SSE token events and capture the session ID from the meta event.
@@ -199,4 +201,42 @@ func (s *Service) executeQueryKnowledge(ctx context.Context, projectID string, a
 // Returns empty string if none is found.
 func tokenFromContext(ctx context.Context) string {
 	return auth.RawTokenFromContext(ctx)
+}
+
+// mcpHTTPError converts a failed loopback HTTP response into a readable error.
+// The server's error envelope is {"error":{code,message,details:{missing:[...]}}};
+// surfacing code + missing scopes makes permission failures actionable
+// (e.g. "query_knowledge: 403 forbidden: Insufficient permissions — token missing required scope(s): chat:use").
+func mcpHTTPError(toolName string, resp *http.Response) error {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return fmt.Errorf("%s: server returned %d", toolName, resp.StatusCode)
+	}
+
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				Missing []interface{} `json:"missing"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	// Non-JSON bodies (empty, plain text, …) fall back to the bare status error.
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Error.Message == "" {
+		return fmt.Errorf("%s: server returned %d", toolName, resp.StatusCode)
+	}
+
+	var missing []string
+	for _, m := range envelope.Error.Details.Missing {
+		if scope, ok := m.(string); ok && scope != "" {
+			missing = append(missing, scope)
+		}
+	}
+
+	msg := fmt.Sprintf("%s: %d %s: %s", toolName, resp.StatusCode, envelope.Error.Code, envelope.Error.Message)
+	if len(missing) > 0 {
+		msg += " — token missing required scope(s): " + strings.Join(missing, ", ")
+	}
+	return errors.New(msg)
 }

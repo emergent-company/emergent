@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/emergent-company/emergent.memory/domain/apitoken"
 	"github.com/emergent-company/emergent.memory/pkg/auth"
 )
 
@@ -37,7 +38,7 @@ func tokenToolDefinitions() []ToolDefinition {
 					},
 					"scopes": {
 						Type:        "string",
-						Description: "Comma-separated list of scopes. Valid values: schema:read, data:read, data:write, agents:read, agents:write, projects:read, projects:write",
+						Description: "Comma-separated list of scopes. Valid values: " + strings.Join(apitoken.ValidApiTokenScopes, ", "),
 					},
 				},
 				Required: []string{"name", "scopes"},
