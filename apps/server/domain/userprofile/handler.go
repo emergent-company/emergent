@@ -3,10 +3,15 @@ package userprofile
 import (
 	"bytes"
 	"errors"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	_ "golang.org/x/image/webp"
 
 	"github.com/emergent-company/emergent.memory/pkg/apperror"
 	"github.com/emergent-company/emergent.memory/pkg/auth"
@@ -14,6 +19,12 @@ import (
 
 // maxAvatarSize is the maximum accepted avatar upload size (512 KiB).
 const maxAvatarSize = 1 << 19
+
+// maxAvatarDimension caps the decoded pixel dimensions, rejecting
+// "decompression bomb" images (small file, huge pixel buffer) before the
+// full decode allocates memory. 1024x1024 bounds the worst-case decode at
+// ~4 MiB (RGBA), ample for an avatar.
+const maxAvatarDimension = 1024
 
 // allowedAvatarTypes are the image content types accepted for avatars,
 // matching the sniffed output of http.DetectContentType.
@@ -107,7 +118,7 @@ func (h *Handler) Update(c echo.Context) error {
 
 // Upload handles avatar image uploads (multipart field "file").
 // @Summary      Upload avatar
-// @Description  Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB)
+// @Description  Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB, max 1024x1024 pixels)
 // @Tags         user-profile
 // @Accept       multipart/form-data
 // @Produce      json
@@ -158,6 +169,20 @@ func (h *Handler) Upload(c echo.Context) error {
 	contentType := http.DetectContentType(data)
 	if !allowedAvatarTypes[contentType] {
 		return apperror.ErrBadRequest.WithMessage("unsupported image type: only PNG, JPEG, WEBP, and GIF images are allowed")
+	}
+
+	// Validate the image decodes and its dimensions are sane. DecodeConfig is
+	// header-only (cheap) and lets us reject oversized images before Decode
+	// allocates the full pixel buffer.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return apperror.NewBadRequest("invalid image header")
+	}
+	if cfg.Width > maxAvatarDimension || cfg.Height > maxAvatarDimension {
+		return apperror.NewBadRequest("image dimensions too large")
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return apperror.NewBadRequest("corrupt image data")
 	}
 
 	profile, err := h.svc.UploadAvatar(c.Request().Context(), user.ID, bytes.NewReader(data), int64(len(data)), contentType)

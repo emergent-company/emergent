@@ -205,6 +205,21 @@ func assertAppErrorStatus(t *testing.T, err error, wantStatus int) {
 	}
 }
 
+// assertAppError checks both the status and the message of a returned app
+// error, so handler tests can pin down which validation stage rejected an
+// image (header vs. dimensions vs. full-decode corruption).
+func assertAppError(t *testing.T, err error, wantStatus int, wantMessage string) {
+	t.Helper()
+	assertAppErrorStatus(t, err, wantStatus)
+	appErr, ok := err.(*apperror.Error)
+	if !ok {
+		t.Fatalf("expected *apperror.Error, got %T: %v", err, err)
+	}
+	if appErr.Message != wantMessage {
+		t.Errorf("Message = %q, want %q", appErr.Message, wantMessage)
+	}
+}
+
 func wantAvatarURL(key string) string {
 	return "/api/user/avatar?v=" + url.QueryEscape(key)
 }
