@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -133,7 +134,7 @@ func (r *Repository) ListProjectProviderConfigsByProvider(ctx context.Context, p
 			logger.Error(err),
 			slog.String("provider", string(provider)),
 		)
-		return nil, apperror.ErrDatabase.WithInternal(err)
+		return nil, fmt.Errorf("list project provider configs by provider %s: %w", provider, err)
 	}
 	return cfgs, nil
 }
