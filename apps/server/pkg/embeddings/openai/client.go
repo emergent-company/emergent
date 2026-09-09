@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/emergent-company/emergent.memory/pkg/embeddings/vertex"
 )
 
 const (
@@ -88,14 +90,14 @@ func NewClient(cfg Config, opts ...ClientOption) (*Client, error) {
 
 // EmbedQuery generates an embedding for a single query string.
 func (c *Client) EmbedQuery(ctx context.Context, query string) ([]float32, error) {
-	results, err := c.embed(ctx, []string{query})
+	result, err := c.EmbedQueryWithUsage(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	if len(results) == 0 {
+	if result == nil || len(result.Embedding) == 0 {
 		return nil, fmt.Errorf("openai embeddings: no embedding returned")
 	}
-	return results[0], nil
+	return result.Embedding, nil
 }
 
 // EmbedDocuments generates embeddings for multiple documents.
@@ -109,7 +111,7 @@ func (c *Client) EmbedDocuments(ctx context.Context, documents []string) ([][]fl
 		if end > len(documents) {
 			end = len(documents)
 		}
-		batch, err := c.embed(ctx, documents[i:end])
+		batch, _, err := c.embed(ctx, documents[i:end])
 		if err != nil {
 			return nil, fmt.Errorf("openai embeddings batch %d-%d: %w", i, end, err)
 		}
@@ -118,10 +120,71 @@ func (c *Client) EmbedDocuments(ctx context.Context, documents []string) ([][]fl
 	return all, nil
 }
 
+// EmbedQueryWithUsage generates an embedding for a single query and reports
+// the token usage returned by the API. Provider is "openai", which covers
+// OpenAI directly and OpenAI-compatible proxies such as LiteLLM.
+func (c *Client) EmbedQueryWithUsage(ctx context.Context, query string) (*vertex.EmbedResult, error) {
+	embeddings, tokens, err := c.embed(ctx, []string{query})
+	if err != nil {
+		return nil, err
+	}
+	if len(embeddings) == 0 {
+		return nil, fmt.Errorf("openai embeddings: no embedding returned")
+	}
+	return &vertex.EmbedResult{
+		Embedding: embeddings[0],
+		Usage:     &vertex.Usage{PromptTokens: tokens, TotalTokens: tokens},
+		Model:     c.model,
+		Provider:  "openai",
+	}, nil
+}
+
+// EmbedDocumentsWithUsage generates embeddings for multiple documents and
+// reports the summed token usage returned by the API. Provider is "openai".
+func (c *Client) EmbedDocumentsWithUsage(ctx context.Context, documents []string) (*vertex.BatchEmbedResult, error) {
+	if len(documents) == 0 {
+		return &vertex.BatchEmbedResult{
+			Embeddings: nil,
+			Usage:      nil,
+			Model:      c.model,
+			Provider:   "openai",
+		}, nil
+	}
+
+	var all [][]float32
+	totalTokens := 0
+	for i := 0; i < len(documents); i += DefaultBatchSize {
+		end := i + DefaultBatchSize
+		if end > len(documents) {
+			end = len(documents)
+		}
+		batch, tokens, err := c.embed(ctx, documents[i:end])
+		if err != nil {
+			return nil, fmt.Errorf("openai embeddings batch %d-%d: %w", i, end, err)
+		}
+		all = append(all, batch...)
+		totalTokens += tokens
+	}
+
+	return &vertex.BatchEmbedResult{
+		Embeddings: all,
+		Usage:      &vertex.Usage{PromptTokens: totalTokens, TotalTokens: totalTokens},
+		Model:      c.model,
+		Provider:   "openai",
+	}, nil
+}
+
 type embedRequest struct {
 	Model      string   `json:"model"`
 	Input      []string `json:"input"`
 	Dimensions int      `json:"dimensions,omitempty"`
+}
+
+// embedUsage mirrors the usage block OpenAI-compatible /embeddings responses
+// return (OpenAI and LiteLLM both include prompt_tokens/total_tokens).
+type embedUsage struct {
+	PromptTokens int `json:"prompt_tokens"`
+	TotalTokens  int `json:"total_tokens"`
 }
 
 type embedResponse struct {
@@ -129,46 +192,49 @@ type embedResponse struct {
 		Embedding []float32 `json:"embedding"`
 		Index     int       `json:"index"`
 	} `json:"data"`
+	Usage *embedUsage `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
 	} `json:"error,omitempty"`
 }
 
-func (c *Client) embed(ctx context.Context, texts []string) ([][]float32, error) {
+// embed posts a single batch to /embeddings and returns the vectors plus the
+// prompt-token count reported in the response usage block (0 when absent).
+func (c *Client) embed(ctx context.Context, texts []string) ([][]float32, int, error) {
 	payload, err := json.Marshal(embedRequest{Model: c.model, Input: texts, Dimensions: c.dimensions})
 	if err != nil {
-		return nil, fmt.Errorf("marshal: %w", err)
+		return nil, 0, fmt.Errorf("marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.baseURL+"/embeddings", bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("new request: %w", err)
+		return nil, 0, fmt.Errorf("new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http: %w", err)
+		return nil, 0, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, 0, fmt.Errorf("read body: %w", err)
 	}
 
 	var result embedResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal (status=%d body=%s): %w", resp.StatusCode, body, err)
+		return nil, 0, fmt.Errorf("unmarshal (status=%d body=%s): %w", resp.StatusCode, body, err)
 	}
 	if result.Error != nil {
-		return nil, fmt.Errorf("api error %d: %s", resp.StatusCode, result.Error.Message)
+		return nil, 0, fmt.Errorf("api error %d: %s", resp.StatusCode, result.Error.Message)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("api error %d: %s", resp.StatusCode, body)
+		return nil, 0, fmt.Errorf("api error %d: %s", resp.StatusCode, body)
 	}
 
 	// Re-order by index (API may return out of order).
@@ -180,8 +246,13 @@ func (c *Client) embed(ctx context.Context, texts []string) ([][]float32, error)
 	}
 	for i, e := range embeddings {
 		if e == nil {
-			return nil, fmt.Errorf("openai embeddings: missing embedding for index %d", i)
+			return nil, 0, fmt.Errorf("openai embeddings: missing embedding for index %d", i)
 		}
 	}
-	return embeddings, nil
+
+	tokens := 0
+	if result.Usage != nil {
+		tokens = result.Usage.PromptTokens
+	}
+	return embeddings, tokens, nil
 }
