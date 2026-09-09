@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emergent-company/emergent.memory/domain/apitoken"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -242,4 +243,90 @@ func TestExecuteQueryKnowledge_IgnoresNonDataLines(t *testing.T) {
 
 	m := parseResultMap(t, result)
 	assert.Equal(t, "hi", m["answer"])
+}
+
+// =============================================================================
+// HTTP 403 with JSON error envelope (missing scopes surfaced)
+// =============================================================================
+
+// missingScopeBody mirrors the server's permission-denied error envelope:
+// {"error":{"code":"forbidden","message":"...","details":{"missing":["chat:use"]}}}
+const missingScopeBody = `{"error":{"code":"forbidden","message":"Insufficient permissions","details":{"missing":["chat:use"]}}}`
+
+// missingScopeServer starts a fake server that answers every request with the
+// missing-scope 403 envelope.
+func missingScopeServer(t *testing.T) (ts *httptest.Server, port int) {
+	t.Helper()
+	return sseServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, missingScopeBody)
+	})
+}
+
+func TestExecuteQueryKnowledge_403MissingScopeSurfaced(t *testing.T) {
+	ts, port := missingScopeServer(t)
+	defer ts.Close()
+
+	svc := &Service{serverPort: port}
+	_, err := svc.executeQueryKnowledge(context.Background(), "proj-id", map[string]any{"question": "q"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Contains(t, err.Error(), "forbidden")
+	assert.Contains(t, err.Error(), "Insufficient permissions")
+	assert.Contains(t, err.Error(), "chat:use")
+	assert.Contains(t, err.Error(), "missing required scope")
+	// The parsed envelope replaces the bare "server returned" fallback.
+	assert.NotContains(t, err.Error(), "server returned")
+}
+
+func TestExecuteRemember_403MissingScopeSurfaced(t *testing.T) {
+	ts, port := missingScopeServer(t)
+	defer ts.Close()
+
+	svc := &Service{serverPort: port}
+	_, err := svc.executeRemember(context.Background(), "proj-id", map[string]any{"message": "remember me"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "remember: 403 forbidden")
+	assert.Contains(t, err.Error(), "Insufficient permissions")
+	assert.Contains(t, err.Error(), "chat:use")
+	assert.Contains(t, err.Error(), "missing required scope")
+}
+
+func TestExecuteForget_403MissingScopeSurfaced(t *testing.T) {
+	ts, port := missingScopeServer(t)
+	defer ts.Close()
+
+	svc := &Service{serverPort: port}
+	_, err := svc.executeForget(context.Background(), "proj-id", map[string]any{"message": "forget me"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "forget: 403 forbidden")
+	assert.Contains(t, err.Error(), "Insufficient permissions")
+	assert.Contains(t, err.Error(), "chat:use")
+	assert.Contains(t, err.Error(), "missing required scope")
+}
+
+// =============================================================================
+// token-create scopes param advertises the authoritative scope list
+// =============================================================================
+
+func TestTokenCreateScopesParam_AdvertisesAllScopes(t *testing.T) {
+	defs := tokenToolDefinitions()
+
+	var scopesDesc string
+	for _, def := range defs {
+		if def.Name == "token-create" {
+			scopesProp, ok := def.InputSchema.Properties["scopes"]
+			require.True(t, ok, "token-create schema has no scopes param")
+			scopesDesc = scopesProp.Description
+			break
+		}
+	}
+	require.NotEmpty(t, scopesDesc, "token-create scopes param description not found")
+
+	// Drift guard: the advertised list must mirror the server's authoritative
+	// scope set (e.g. chat:use must not be missing again).
+	want := "Comma-separated list of scopes. Valid values: " + strings.Join(apitoken.ValidApiTokenScopes, ", ")
+	assert.Equal(t, want, scopesDesc)
+	assert.Contains(t, scopesDesc, "chat:use")
 }
