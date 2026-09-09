@@ -244,14 +244,23 @@ func (s *CredentialService) DefaultGenerativeModel(ctx context.Context, projectI
 			continue
 		}
 		if cred != nil && cred.GenerativeModel != "" {
-			gen := cred.GenerativeModel
-			if _, bare, ok := strings.Cut(gen, "/"); ok {
-				gen = bare
-			}
-			return string(cred.Provider) + "/" + gen, nil
+			return prefixedGenerativeModelName(cred.Provider, cred.GenerativeModel), nil
 		}
 	}
 	return "", nil
+}
+
+// prefixedGenerativeModelName prefixes the routing provider onto a generative
+// model name, producing the routed "provider/model" form the executor expects.
+//
+// cred.GenerativeModel is already bare (decryptProjectConfig runs it through
+// stripModelPrefix, which leaves multi-segment Vertex resource paths like
+// "publishers/google/models/gemini-2.5-flash" untouched), so the extra Cut
+// here would corrupt those into "google-vertex/google/models/...". Routing
+// through the idempotent stripModelPrefix keeps the edge safe without changing
+// the bare-model result.
+func prefixedGenerativeModelName(provider ProviderType, gen string) string {
+	return string(provider) + "/" + stripModelPrefix(gen)
 }
 
 // embeddingProviderOrder lists providers in preference order for embedding

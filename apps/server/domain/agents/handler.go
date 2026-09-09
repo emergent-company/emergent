@@ -1278,6 +1278,18 @@ func (h *Handler) ReceiveWebhook(c echo.Context) error {
 // --- Agent Definition Handlers ---
 
 // ListDefinitions handles GET /api/projects/:projectId/agent-definitions
+// @Summary      List agent definitions
+// @Description  Returns all agent definitions for a project, each with the effective generative model it would run with (per-agent override when set, else the project's resolved default)
+// @Tags         agent-definitions
+// @Accept       json
+// @Produce      json
+// @Param        projectId path string true "Project ID (UUID)"
+// @Success      200 {object} APIResponse[[]AgentDefinitionSummaryDTO] "List of agent definitions"
+// @Failure      400 {object} apperror.Error "Invalid project ID"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/projects/{projectId}/agent-definitions [get]
+// @Security     bearerAuth
 func (h *Handler) ListDefinitions(c echo.Context) error {
 	user := auth.MustGetUser(c)
 
@@ -1320,6 +1332,20 @@ func (h *Handler) ListDefinitions(c echo.Context) error {
 }
 
 // GetDefinition handles GET /api/projects/:projectId/agent-definitions/:id
+// @Summary      Get agent definition by ID
+// @Description  Returns an agent definition with its effective generative model resolved (per-agent override when set, else project config → provider-credential generative model)
+// @Tags         agent-definitions
+// @Accept       json
+// @Produce      json
+// @Param        projectId path string true "Project ID (UUID)"
+// @Param        id path string true "Agent Definition ID (UUID)"
+// @Success      200 {object} APIResponse[AgentDefinitionDTO] "Agent definition details"
+// @Failure      400 {object} apperror.Error "Invalid project ID or definition ID"
+// @Failure      401 {object} apperror.Error "Unauthorized"
+// @Failure      404 {object} apperror.Error "Agent definition not found"
+// @Failure      500 {object} apperror.Error "Internal server error"
+// @Router       /api/projects/{projectId}/agent-definitions/{id} [get]
+// @Security     bearerAuth
 func (h *Handler) GetDefinition(c echo.Context) error {
 	user := auth.MustGetUser(c)
 
