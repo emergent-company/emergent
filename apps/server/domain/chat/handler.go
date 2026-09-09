@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -353,10 +354,16 @@ func (h *Handler) GetConversationHistory(c echo.Context) error {
 	}
 
 	if conv.ACPSessionID == nil {
-		// No agent runs yet — return empty history.
+		// No agent runs exist yet — synthesize the transcript from the
+		// conversation's stored kb.chat_messages (role/content/created_at) so
+		// user/assistant rows surface even before a run starts (e.g.
+		// document-classification or get-or-create flows that write chat
+		// messages but never execute an agent turn). Shape mirrors the
+		// "message" items produced by GetConversationFullHistory so the gateway
+		// renders both uniformly.
 		return c.JSON(http.StatusOK, map[string]any{
 			"conversation_id": conversationID,
-			"items":           []any{},
+			"items":           synthesizeConversationMessageItems(conv.Messages),
 		})
 	}
 
@@ -365,11 +372,102 @@ func (h *Handler) GetConversationHistory(c echo.Context) error {
 		return apperror.ErrInternal.WithMessage("failed to load conversation history")
 	}
 
+	// Merge the conversation's stored kb.chat_messages user messages into the
+	// run timeline (interleaved chronologically by created_at) so a
+	// get-or-create conversation that seeded a user message and then ran an
+	// agent turn shows the user message alongside the run items. Identical
+	// (role+content+time) rows present in both stores are deduplicated.
+	items = mergeConversationUserMessages(items, conv.Messages)
+
 	return c.JSON(http.StatusOK, map[string]any{
 		"conversation_id": conversationID,
 		"acp_session_id":  conv.ACPSessionID,
 		"items":           items,
 	})
+}
+
+// conversationMessageItem mirrors the "message" timeline item shape returned by
+// agents.Repository.GetConversationFullHistory (kind/role/content/created_at)
+// for a single stored kb.chat_messages row.
+func conversationMessageItem(m Message) *agents.ConversationHistoryItem {
+	return &agents.ConversationHistoryItem{
+		Kind:      "message",
+		CreatedAt: m.CreatedAt,
+		Role:      m.Role,
+		Content:   map[string]any{"text": m.Content},
+	}
+}
+
+// synthesizeConversationMessageItems converts stored chat messages into
+// timeline "message" items, in stored (created_at ASC) order.
+func synthesizeConversationMessageItems(msgs []Message) []*agents.ConversationHistoryItem {
+	items := make([]*agents.ConversationHistoryItem, 0, len(msgs))
+	for i := range msgs {
+		items = append(items, conversationMessageItem(msgs[i]))
+	}
+	return items
+}
+
+// conversationItemText extracts the plain-text payload of a message timeline
+// item's content object.
+func conversationItemText(it *agents.ConversationHistoryItem) string {
+	if it == nil || it.Content == nil {
+		return ""
+	}
+	text, _ := it.Content["text"].(string)
+	return text
+}
+
+// conversationUserMessageKey identifies a user message item by role + content +
+// created_at — the deduplication criterion for rows that exist in both
+// kb.chat_messages and the run-scoped agent_run_messages.
+func conversationUserMessageKey(role string, createdAt time.Time, content string) string {
+	return role + "\x00" + createdAt.UTC().Format(time.RFC3339Nano) + "\x00" + content
+}
+
+// mergeConversationUserMessages interleaves a conversation's stored
+// kb.chat_messages user messages into a run-based timeline, ordered
+// chronologically by created_at. A stored user message that exactly matches a
+// run item (role+content+time) is skipped — both stores can persist the same
+// user message for an agent turn.
+func mergeConversationUserMessages(runItems []*agents.ConversationHistoryItem, msgs []Message) []*agents.ConversationHistoryItem {
+	if len(msgs) == 0 {
+		return runItems
+	}
+
+	// Key every run-scoped user message for exact-match dedupe.
+	seen := make(map[string]struct{}, len(runItems))
+	for _, it := range runItems {
+		if it == nil || it.Kind != "message" || it.Role != RoleUser {
+			continue
+		}
+		seen[conversationUserMessageKey(it.Role, it.CreatedAt, conversationItemText(it))] = struct{}{}
+	}
+
+	out := make([]*agents.ConversationHistoryItem, 0, len(runItems)+len(msgs))
+	out = append(out, runItems...)
+	for i := range msgs {
+		if msgs[i].Role != RoleUser {
+			// Assistant/tool turns are already captured run-scoped for
+			// agent-backed conversations; only stored user rows can precede a
+			// run (e.g. get-or-create seeding).
+			continue
+		}
+		item := conversationMessageItem(msgs[i])
+		key := conversationUserMessageKey(item.Role, item.CreatedAt, conversationItemText(item))
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+
+	// Interleave chronologically; stable sort keeps run items before stored
+	// messages when timestamps tie.
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out
 }
 
 // Validation helpers
@@ -1082,6 +1180,40 @@ func (h *Handler) streamAgentChat(ctx context.Context, conv *Conversation, messa
 		return result
 	}
 
+	// Safety net: a reasoner answering entirely in reasoning_content (thinking
+	// mode) never delivers a non-Thought text part, so the executor surfaces the
+	// answer as StreamEventThinking events and fullResponse stays empty even
+	// though the run completed and persisted the final text. When that happens,
+	// recover the answer from the run's persisted assistant content (or the
+	// result summary) and emit it as a single token event so the client still
+	// receives the final text and the assistant row is written to
+	// kb.chat_messages below.
+	if responseText == "" && result != nil && result.Status == agents.RunStatusSuccess {
+		fallback := ""
+		if runMsgs, err := h.agentRepo.FindMessagesByRunID(ctx, result.RunID); err == nil {
+			// Last text-bearing row that is not the user/tool side of the run is
+			// the assistant answer (Role may be "assistant" or the agent author).
+			for i := len(runMsgs) - 1; i >= 0; i-- {
+				if runMsgs[i].Role == RoleUser || runMsgs[i].Role == "tool" {
+					continue
+				}
+				if t := agentRunMessageText(runMsgs[i].Content); t != "" {
+					fallback = t
+					break
+				}
+			}
+		}
+		if fallback == "" {
+			if t, ok := result.Summary["final_response"].(string); ok && t != "" {
+				fallback = t
+			}
+		}
+		if fallback != "" {
+			responseText = fallback
+			sseWriter.WriteData(sse.NewTokenEvent(fallback))
+		}
+	}
+
 	// Persist assistant response to kb.chat_messages with agent_run_id reference
 	if responseText != "" {
 		var retrievalCtx json.RawMessage
@@ -1100,6 +1232,16 @@ func (h *Handler) streamAgentChat(ctx context.Context, conv *Conversation, messa
 	}
 
 	return result
+}
+
+// agentRunMessageText extracts the plain-text payload of an agent run message's
+// content object ({"text": "..."}), returning "" when absent.
+func agentRunMessageText(content map[string]any) string {
+	if content == nil {
+		return ""
+	}
+	text, _ := content["text"].(string)
+	return text
 }
 
 // QueryStreamRequest is the request body for the stateless query endpoint.

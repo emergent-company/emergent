@@ -2611,12 +2611,26 @@ func (ae *AgentExecutor) runPipeline(
 				// are surfaced as thinking events rather than dropped, so a reasoner
 				// that returns chain-of-thought alongside its final answer is not
 				// silently stripped.
+				//
+				// The final assistant message must always deliver its answer as a
+				// TextDelta — never leave it as thinking-only. When the final content
+				// carries no plain (non-Thought) text part (e.g. a reasoner in
+				// thinking mode that answers entirely in reasoning_content, which is
+				// mapped to a Thought part), the Thought text IS the answer: emit it
+				// as text deltas so callers receive a non-empty final response.
 				if event.Content != nil && req.StreamCallback != nil {
+					hasAnswerText := false
+					for _, part := range event.Content.Parts {
+						if part != nil && part.Text != "" && !part.Thought {
+							hasAnswerText = true
+							break
+						}
+					}
 					for _, part := range event.Content.Parts {
 						if part == nil || part.Text == "" {
 							continue
 						}
-						if part.Thought {
+						if part.Thought && hasAnswerText {
 							req.StreamCallback(StreamEvent{
 								Type: StreamEventThinking,
 								Role: "reasoning",
