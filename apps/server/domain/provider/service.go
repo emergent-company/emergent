@@ -215,6 +215,45 @@ func (s *CredentialService) ResolveAny(ctx context.Context) (*ResolvedCredential
 	return nil, nil
 }
 
+// DefaultGenerativeModel returns a prefixed "provider/model" name for the
+// given project's first provider credential (DeepSeek → OpenAI → VertexAI →
+// GoogleAI) that carries a generative model, or "" when none does. The project
+// is passed explicitly (not read from the request context) so callers can
+// resolve for a project that may differ from the session's active one.
+//
+// This is the canonical home of the executor's provider-config fallback
+// (pkg/adk CreateModel): name building is identical (prefix the bare model
+// with its routing provider), so the model reported via
+// modelconfig.ResolveGenerativeModel matches what a run would use.
+func (s *CredentialService) DefaultGenerativeModel(ctx context.Context, projectID string) (string, error) {
+	providerOrder := []ProviderType{ProviderDeepSeek, ProviderOpenAI, ProviderVertexAI, ProviderGoogleAI}
+	if projectID == "" {
+		return "", nil
+	}
+	for _, p := range providerOrder {
+		cfg, err := s.repo.GetProjectProviderConfig(ctx, projectID, p)
+		if err != nil || cfg == nil {
+			continue
+		}
+		cred, err := s.decryptProjectConfig(cfg)
+		if err != nil {
+			s.log.Debug("project credential decryption failed, trying next",
+				slog.String("provider", string(p)),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		if cred != nil && cred.GenerativeModel != "" {
+			gen := cred.GenerativeModel
+			if _, bare, ok := strings.Cut(gen, "/"); ok {
+				gen = bare
+			}
+			return string(cred.Provider) + "/" + gen, nil
+		}
+	}
+	return "", nil
+}
+
 // embeddingProviderOrder lists providers in preference order for embedding
 // resolution. Google AI and Vertex AI come first (native embedding support),
 // then OpenAI (embedding via the OpenAI API). DeepSeek is last — it has no

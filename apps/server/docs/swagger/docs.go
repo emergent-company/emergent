@@ -25481,10 +25481,12 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "project",
+                "provider",
                 "none"
             ],
             "x-enum-varnames": [
                 "ModelSourceProject",
+                "ModelSourceProvider",
                 "ModelSourceNone"
             ]
         },

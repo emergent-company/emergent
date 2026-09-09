@@ -95,8 +95,9 @@ func (f *ModelFactory) maybeTestLLM(ctx context.Context) model.LLM {
 // CreateModel creates an ADK-compatible LLM model.
 //
 // Model resolution order:
-//  1. ModelResolver.ResolveGenerativeModelByID — project → org DB chain.
-//     If the resolved model is empty (no DB config) an error is returned.
+//  1. ModelResolver.ResolveGenerativeModelByID — project config → provider
+//     credential generative model. If the resolved model is empty (nothing
+//     configured) an error is returned.
 //  2. If no ModelResolver is wired (tests / env-var-only mode), falls back to
 //     the first configured env-var model (DEEPSEEK_MODEL → OPENAI_MODEL →
 //     VERTEX_AI_MODEL). If none are set, returns ErrNoModelConfigured.
@@ -119,9 +120,11 @@ func (f *ModelFactory) CreateModel(ctx context.Context) (model.LLM, error) {
 			return nil, fmt.Errorf("model resolver error for project %s: %w", projectID, err)
 		}
 		if resolved == "" {
-			// Fall back to the provider credential's generative model (set via
-			// 'memory provider configure-project <provider> --generative-model <model>').
-			// This lets chat/agents work without a separate 'projects set-models' step.
+			// Defensive copy of the provider-config fallback now canonical in
+			// modelconfig.Service.ResolveGenerativeModel (via
+			// CredentialService.DefaultGenerativeModel). Kept for graph
+			// variants where the resolver is wired without that fallback
+			// (e.g. tests); behavior must stay identical to it.
 			if f.resolver != nil {
 				if cred, _ := f.resolver.ResolveAny(ctx); cred != nil && cred.GenerativeModel != "" {
 					gen := cred.GenerativeModel

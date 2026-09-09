@@ -51,7 +51,9 @@ type ModelLimitResolver interface {
 type ModelResolver interface {
 	// ResolveGenerativeModel returns the effective model name and source
 	// for the given project UUID string.
-	// projectID must be a valid UUID string; returns env default when not found.
+	// projectID must be a valid UUID string; resolves project config →
+	// provider-credential generative model, returns empty when neither is set
+	// (env defaults are never consulted on the wired path).
 	ResolveGenerativeModelByID(ctx context.Context, projectID string) (model string, source string, err error)
 }
 

@@ -14,13 +14,40 @@ import (
 // It is also used by pkg/adk to determine the effective generative model
 // when no per-agent override is present.
 type Service struct {
-	store *Store
+	store modelConfigStore
 	log   *slog.Logger
+	// resolver supplies the project's provider-credential generative default
+	// (optional). When set, generative resolution falls back to it when a
+	// project has no explicit model config — mirroring the executor's default.
+	resolver generativeDefaultResolver
+}
+
+// modelConfigStore is the persistence seam Service needs. Implemented by
+// *Store; extracted so resolution behavior is unit-testable without a DB.
+type modelConfigStore interface {
+	GetProjectModelConfig(ctx context.Context, projectID uuid.UUID) (*ProjectModelConfig, error)
+	UpsertProjectModelConfig(ctx context.Context, cfg *ProjectModelConfig) error
+	DeleteProjectModelConfig(ctx context.Context, projectID uuid.UUID) error
+}
+
+// generativeDefaultResolver returns a prefixed "provider/model" name for the
+// project's first provider credential that carries a generative model, or ""
+// when none does. Implemented by provider.CredentialService.
+type generativeDefaultResolver interface {
+	DefaultGenerativeModel(ctx context.Context, projectID string) (string, error)
 }
 
 // NewService creates a new model config Service.
-func NewService(store *Store, log *slog.Logger) *Service {
+func NewService(store modelConfigStore, log *slog.Logger) *Service {
 	return &Service{store: store, log: log}
+}
+
+// WithGenerativeDefaultResolver wires the provider-credential fallback used by
+// ResolveGenerativeModel when no project model config is set. Nil-safe: without
+// it, generative resolution stops at the project config (pre-fallback behavior).
+func (s *Service) WithGenerativeDefaultResolver(r generativeDefaultResolver) *Service {
+	s.resolver = r
+	return s
 }
 
 // validateModelName returns an error if the model name does not include a
@@ -87,9 +114,13 @@ func (s *Service) DeleteProjectModelConfig(ctx context.Context, projectID uuid.U
 
 // ResolveGenerativeModel returns the effective generative model name for a project.
 //
-// Chain: project config only.
-// Returns ("", ModelSourceNone, nil) when no config is set — callers must treat
-// an empty model name as "not configured" and surface an error to the user.
+// Chain: project model config → provider-credential generative model (when a
+// resolver is wired) → none. The provider-credential fallback mirrors the
+// executor's default (pkg/adk CreateModel), so the reported model matches what
+// a run would actually use. Env-var models are NOT consulted: production runs
+// always go through the resolver, so env defaults are a test-only path.
+// Returns ("", ModelSourceNone, nil) when nothing resolves — callers must
+// treat an empty model name as "not configured" and surface an error.
 func (s *Service) ResolveGenerativeModel(ctx context.Context, projectID uuid.UUID) (model string, source ModelSource, err error) {
 	projCfg, err := s.store.GetProjectModelConfig(ctx, projectID)
 	if err != nil {
@@ -97,6 +128,11 @@ func (s *Service) ResolveGenerativeModel(ctx context.Context, projectID uuid.UUI
 	}
 	if projCfg != nil && projCfg.GenerativeModel != "" {
 		return projCfg.GenerativeModel, ModelSourceProject, nil
+	}
+	if s.resolver != nil {
+		if m, rerr := s.resolver.DefaultGenerativeModel(ctx, projectID.String()); rerr == nil && m != "" {
+			return m, ModelSourceProvider, nil
+		}
 	}
 	return "", ModelSourceNone, nil
 }
