@@ -40,8 +40,12 @@ type pricingEntry struct {
 }
 
 // staticPricing holds known retail prices as a compile-time fallback.
-// These reflect publicly documented Google AI / Vertex AI pricing as of 2025.
-// All prices are per 1M tokens in USD.
+// These reflect publicly documented Google AI / Vertex AI / OpenAI pricing as
+// of Sept 2026. All prices are per 1M tokens in USD.
+//
+// The remote registry URL may be unavailable, so this embedded list is the
+// operative source for retail pricing. Embedding prices are text-input rates
+// only (embedding usage events carry no output tokens).
 var staticPricing = []ProviderPricing{
 	// Google AI (Gemini API) — gemini-1.5-flash
 	{Provider: ProviderGoogleAI, Model: "gemini-1.5-flash", TextInputPrice: 0.075, ImageInputPrice: 0.075, AudioInputPrice: 0.075, OutputPrice: 0.30},
@@ -53,6 +57,12 @@ var staticPricing = []ProviderPricing{
 	{Provider: ProviderGoogleAI, Model: "gemini-3.1-flash-lite-preview", TextInputPrice: 0.10, ImageInputPrice: 0.10, AudioInputPrice: 0.10, OutputPrice: 0.40},
 	{Provider: ProviderGoogleAI, Model: "gemini-3.1-flash", TextInputPrice: 0.15, ImageInputPrice: 0.15, AudioInputPrice: 0.15, OutputPrice: 0.60},
 	{Provider: ProviderGoogleAI, Model: "gemini-3.1-pro", TextInputPrice: 1.25, ImageInputPrice: 1.25, AudioInputPrice: 1.25, OutputPrice: 5.00},
+	// Google AI (Gemini API) — embeddings, text input price per 1M tokens.
+	// gemini-embedding-2-preview's list price is not published separately;
+	// it is charged at the GA Gemini Embedding 2 rate.
+	{Provider: ProviderGoogleAI, Model: "gemini-embedding-001", TextInputPrice: 0.15},
+	{Provider: ProviderGoogleAI, Model: "gemini-embedding-2", TextInputPrice: 0.20},
+	{Provider: ProviderGoogleAI, Model: "gemini-embedding-2-preview", TextInputPrice: 0.20},
 	// Vertex AI — same models, same pricing (users bring their own project)
 	{Provider: ProviderVertexAI, Model: "gemini-1.5-flash", TextInputPrice: 0.075, ImageInputPrice: 0.075, AudioInputPrice: 0.075, OutputPrice: 0.30},
 	{Provider: ProviderVertexAI, Model: "gemini-1.5-flash-8b", TextInputPrice: 0.0375, ImageInputPrice: 0.0375, AudioInputPrice: 0.0375, OutputPrice: 0.15},
@@ -63,6 +73,17 @@ var staticPricing = []ProviderPricing{
 	{Provider: ProviderVertexAI, Model: "gemini-3.1-flash-lite-preview", TextInputPrice: 0.10, ImageInputPrice: 0.10, AudioInputPrice: 0.10, OutputPrice: 0.40},
 	{Provider: ProviderVertexAI, Model: "gemini-3.1-flash", TextInputPrice: 0.15, ImageInputPrice: 0.15, AudioInputPrice: 0.15, OutputPrice: 0.60},
 	{Provider: ProviderVertexAI, Model: "gemini-3.1-pro", TextInputPrice: 1.25, ImageInputPrice: 1.25, AudioInputPrice: 1.25, OutputPrice: 5.00},
+	// Vertex AI — embeddings, text input price per 1M tokens.
+	{Provider: ProviderVertexAI, Model: "gemini-embedding-001", TextInputPrice: 0.15},
+	{Provider: ProviderVertexAI, Model: "gemini-embedding-2", TextInputPrice: 0.20},
+	{Provider: ProviderVertexAI, Model: "gemini-embedding-2-preview", TextInputPrice: 0.20},
+	{Provider: ProviderVertexAI, Model: "text-embedding-004", TextInputPrice: 0.025},
+	// OpenAI — embeddings, text input price per 1M tokens. Useful when
+	// OpenAI-compatible/LiteLLM proxies serve embedding models; the model-only
+	// fallback matches these regardless of the recorded provider.
+	{Provider: ProviderOpenAI, Model: "text-embedding-3-small", TextInputPrice: 0.02},
+	{Provider: ProviderOpenAI, Model: "text-embedding-3-large", TextInputPrice: 0.13},
+	{Provider: ProviderOpenAI, Model: "text-embedding-ada-002", TextInputPrice: 0.10},
 	// DeepSeek — generative only, no embeddings. Prices per 1M tokens USD.
 	{Provider: ProviderDeepSeek, Model: "deepseek-v4-flash", TextInputPrice: 0.14, OutputPrice: 0.28},
 	{Provider: ProviderDeepSeek, Model: "deepseek-v4-pro", TextInputPrice: 1.74, OutputPrice: 3.48},
