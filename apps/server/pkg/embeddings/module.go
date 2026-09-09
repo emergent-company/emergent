@@ -176,6 +176,15 @@ func (s *Service) EmbedDocuments(ctx context.Context, documents []string) ([][]f
 	return client.EmbedDocuments(ctx, documents)
 }
 
+// usageReportingClient is implemented by embedding clients whose responses
+// include token usage: the vertex client and the OpenAI-compatible client
+// (OpenAI direct or LiteLLM-style proxies). Clients without usage support
+// (genai, noop) fall back to plain embedding results.
+type usageReportingClient interface {
+	EmbedQueryWithUsage(ctx context.Context, query string) (*vertex.EmbedResult, error)
+	EmbedDocumentsWithUsage(ctx context.Context, documents []string) (*vertex.BatchEmbedResult, error)
+}
+
 // EmbedQueryWithUsage generates an embedding with usage data (if supported by client)
 func (s *Service) EmbedQueryWithUsage(ctx context.Context, query string) (*vertex.EmbedResult, error) {
 	if s.isTestLLM(ctx) {
@@ -185,7 +194,7 @@ func (s *Service) EmbedQueryWithUsage(ctx context.Context, query string) (*verte
 	if err != nil {
 		return nil, err
 	}
-	if c, ok := client.(*vertex.Client); ok {
+	if c, ok := client.(usageReportingClient); ok {
 		return c.EmbedQueryWithUsage(ctx, query)
 	}
 	// Fallback for clients without usage support
@@ -209,7 +218,7 @@ func (s *Service) EmbedDocumentsWithUsage(ctx context.Context, documents []strin
 	if err != nil {
 		return nil, err
 	}
-	if c, ok := client.(*vertex.Client); ok {
+	if c, ok := client.(usageReportingClient); ok {
 		return c.EmbedDocumentsWithUsage(ctx, documents)
 	}
 	// Fallback for clients without usage support

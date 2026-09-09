@@ -90,7 +90,8 @@ func (c *orgIDCache) resolve(ctx context.Context, projectID string) string {
 }
 
 // recordEmbeddingUsage is a helper that creates and records an embedding usage event.
-// It is safe to call with nil recorder (no-op).
+// It is safe to call with nil recorder (no-op). Events without token usage
+// (usage unavailable or zero tokens) are skipped so no $0 noise rows are stored.
 func recordEmbeddingUsage(
 	recorder EmbeddingUsageRecorder,
 	projectID string,
@@ -100,7 +101,7 @@ func recordEmbeddingUsage(
 	if recorder == nil || projectID == "" || orgID == "" {
 		return
 	}
-	if result == nil || result.Usage == nil {
+	if result == nil || result.Usage == nil || result.Usage.PromptTokens <= 0 {
 		return
 	}
 
@@ -111,6 +112,9 @@ func recordEmbeddingUsage(
 		providerType = provider.ProviderVertexAI
 	case "googleai":
 		providerType = provider.ProviderGoogleAI
+	case "openai":
+		// OpenAI-compatible endpoint (OpenAI direct or a LiteLLM-style proxy).
+		providerType = provider.ProviderOpenAI
 	default:
 		providerType = provider.ProviderGoogleAI // safe default
 	}

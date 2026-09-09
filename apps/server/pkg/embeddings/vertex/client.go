@@ -193,7 +193,7 @@ type EmbedResult struct {
 	Embedding []float32
 	Usage     *Usage
 	Model     string // the model name that produced this embedding
-	Provider  string // "vertex" or "googleai"
+	Provider  string // "vertex", "googleai", or "openai"
 }
 
 // BatchEmbedResult contains batch embedding results with usage data
@@ -201,7 +201,7 @@ type BatchEmbedResult struct {
 	Embeddings [][]float32
 	Usage      *Usage
 	Model      string // the model name that produced these embeddings
-	Provider   string // "vertex" or "googleai"
+	Provider   string // "vertex", "googleai", or "openai"
 }
 
 // Usage contains token usage information
