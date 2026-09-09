@@ -95,8 +95,9 @@ func (f *ModelFactory) maybeTestLLM(ctx context.Context) model.LLM {
 // CreateModel creates an ADK-compatible LLM model.
 //
 // Model resolution order:
-//  1. ModelResolver.ResolveGenerativeModelByID — project → org DB chain.
-//     If the resolved model is empty (no DB config) an error is returned.
+//  1. ModelResolver.ResolveGenerativeModelByID — project config → provider
+//     credential generative model. If the resolved model is empty (nothing
+//     configured) an error is returned.
 //  2. If no ModelResolver is wired (tests / env-var-only mode), falls back to
 //     the first configured env-var model (DEEPSEEK_MODEL → OPENAI_MODEL →
 //     VERTEX_AI_MODEL). If none are set, returns ErrNoModelConfigured.
@@ -119,16 +120,14 @@ func (f *ModelFactory) CreateModel(ctx context.Context) (model.LLM, error) {
 			return nil, fmt.Errorf("model resolver error for project %s: %w", projectID, err)
 		}
 		if resolved == "" {
-			// Fall back to the provider credential's generative model (set via
-			// 'memory provider configure-project <provider> --generative-model <model>').
-			// This lets chat/agents work without a separate 'projects set-models' step.
+			// Defensive copy of the provider-config fallback now canonical in
+			// modelconfig.Service.ResolveGenerativeModel (via
+			// CredentialService.DefaultGenerativeModel). Kept for graph
+			// variants where the resolver is wired without that fallback
+			// (e.g. tests); behavior must stay identical to it.
 			if f.resolver != nil {
 				if cred, _ := f.resolver.ResolveAny(ctx); cred != nil && cred.GenerativeModel != "" {
-					gen := cred.GenerativeModel
-					if _, bare, ok := strings.Cut(gen, "/"); ok {
-						gen = bare
-					}
-					name := cred.Provider + "/" + gen
+					name := cred.Provider + "/" + stripRoutingPrefix(cred.GenerativeModel)
 					f.log.Debug("resolved generative model from provider config fallback",
 						slog.String("model", name),
 						slog.String("provider", cred.Provider),
@@ -154,6 +153,23 @@ func (f *ModelFactory) CreateModel(ctx context.Context) (model.LLM, error) {
 		return nil, fmt.Errorf("no generative model configured: set DEEPSEEK_MODEL, OPENAI_MODEL, or VERTEX_AI_MODEL")
 	}
 	return f.CreateModelWithName(ctx, envModel)
+}
+
+// stripRoutingPrefix removes a single "provider/" routing prefix from a model
+// name, mirroring domain/provider's stripModelPrefix: only a name with exactly
+// one '/' is treated as prefixed and returned bare; bare names and multi-
+// segment resource paths (Vertex "publishers/google/models/..." or
+// "locations/.../publishers/...") are returned unchanged. It is idempotent so
+// defensive fallbacks over already-stripped credentials never double-strip a
+// routing prefix out of the middle of a resource path.
+func stripRoutingPrefix(model string) string {
+	if strings.Count(model, "/") != 1 {
+		return model
+	}
+	if _, bare, ok := strings.Cut(model, "/"); ok {
+		return bare
+	}
+	return model
 }
 
 // CreateModelWithName creates an ADK-compatible Gemini model with a specific model name.

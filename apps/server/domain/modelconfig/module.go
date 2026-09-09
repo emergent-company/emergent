@@ -33,8 +33,11 @@ func provideStore(db bun.IDB, log *slog.Logger) *Store {
 	return NewStore(db, log)
 }
 
-func provideService(store *Store, log *slog.Logger) *Service {
-	return NewService(store, log)
+func provideService(store *Store, credsvc *provider.CredentialService, log *slog.Logger) *Service {
+	// provider.CredentialService satisfies generativeDefaultResolver; wire the
+	// fallback so ResolveGenerativeModel reports the provider-credential model
+	// the executor would use when no project config is set.
+	return NewService(store, log).WithGenerativeDefaultResolver(credsvc)
 }
 
 func provideADKModelResolverAdapter(svc *Service) adk.ModelResolver {

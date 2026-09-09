@@ -9694,6 +9694,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/projects/{id}/transfer": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Reparents a project to a destination organization. The project's organization_id becomes the destination org; identity, history, settings and memberships are preserved. The requester must be an org_admin of the project's current org and a member of the destination org.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Transfer project to another organization",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Project transfer request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_projects.TransferProjectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transferred project",
+                        "schema": {
+                            "$ref": "#/definitions/domain_projects.Project"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body, project ID, or project already in destination org",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Project not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/projects/{projectId}/agent-approvals": {
             "get": {
                 "security": [
@@ -9742,6 +9818,129 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/projects/{projectId}/agent-definitions": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns all agent definitions for a project, each with the effective generative model it would run with (per-agent override when set, else the project's resolved default)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agent-definitions"
+                ],
+                "summary": "List agent definitions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID (UUID)",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of agent definitions",
+                        "schema": {
+                            "$ref": "#/definitions/domain_agents.APIResponse-array_domain_agents_AgentDefinitionSummaryDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid project ID",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/projects/{projectId}/agent-definitions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns an agent definition with its effective generative model resolved (per-agent override when set, else project config → provider-credential generative model)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agent-definitions"
+                ],
+                "summary": "Get agent definition by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID (UUID)",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent Definition ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Agent definition details",
+                        "schema": {
+                            "$ref": "#/definitions/domain_agents.APIResponse-domain_agents_AgentDefinitionDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid project ID or definition ID",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Agent definition not found",
                         "schema": {
                             "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
                         }
@@ -11369,6 +11568,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/schemas/projects/{projectId}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns schema packs visible to a project (project-owned + global), with optional search and pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "schemas"
+                ],
+                "summary": "List schema packs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID (UUID)",
+                        "name": "projectId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by name/description (case-insensitive substring)",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 20, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Pagination offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schema catalog",
+                        "schema": {
+                            "$ref": "#/definitions/domain_schemas.SchemaListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/schemas/projects/{projectId}/assign": {
             "post": {
                 "security": [
@@ -12432,6 +12704,53 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/search/trace/{traceId}": {
+            "get": {
+                "description": "Returns a persisted retrieval trace (query + ordered selected IDs) by trace ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Get retrieval trace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "traceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain_search.UnifiedSearchTraceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
                         }
@@ -15428,6 +15747,146 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/avatar": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Returns the authenticated user's avatar image",
+                "produces": [
+                    "image/png",
+                    " image/jpeg",
+                    " image/webp",
+                    " image/gif"
+                ],
+                "tags": [
+                    "user-profile"
+                ],
+                "summary": "Get avatar",
+                "responses": {
+                    "200": {
+                        "description": "Avatar image",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "No avatar",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB, max 1024x1024 pixels)",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-profile"
+                ],
+                "summary": "Upload avatar",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Avatar image file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated profile",
+                        "schema": {
+                            "$ref": "#/definitions/domain_userprofile.ProfileDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "413": {
+                        "description": "File too large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Removes the authenticated user's avatar image",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-profile"
+                ],
+                "summary": "Delete avatar",
+                "responses": {
+                    "200": {
+                        "description": "Updated profile",
+                        "schema": {
+                            "$ref": "#/definitions/domain_userprofile.ProfileDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/profile": {
             "get": {
                 "security": [
@@ -17381,7 +17840,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Backup configuration (includeDeleted, includeChat, retentionDays: 1-365)",
+                        "description": "Backup configuration (includeDeleted, includeChat, includeJournal, retentionDays: 1-365)",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -17425,7 +17884,10 @@ const docTemplate = `{
                         "bearerAuth": []
                     }
                 ],
-                "description": "Initiates async restore of a project from backup archive (coming in next phase)",
+                "description": "Initiates async restore of a project from a backup archive. The project route overwrites the existing project; the organization route clones into a new project.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -17435,32 +17897,63 @@ const docTemplate = `{
                 "summary": "Restore project from backup",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Project ID (UUID)",
-                        "name": "projectId",
-                        "in": "path",
-                        "required": true
+                        "description": "Restore request (backupId, preRestoreSnapshot, includeJournal, targetProjectName)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain_backups.RestoreRequestDTO"
+                        }
                     }
                 ],
                 "responses": {
-                    "501": {
-                        "description": "Not implemented - coming in next phase",
+                    "202": {
+                        "description": "Restore job created (status: pending)",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/domain_backups.Restore"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a member of the target organization",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Backup not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
                         }
                     }
                 }
             }
         },
-        "/api/v1/projects/{projectId}/restores/{restoreId}": {
+        "/api/v1/restores/{restoreId}": {
             "get": {
                 "security": [
                     {
                         "bearerAuth": []
                     }
                 ],
-                "description": "Returns restore job progress and status (coming in next phase)",
+                "description": "Returns restore job status, progress, and error message (if failed)",
                 "produces": [
                     "application/json"
                 ],
@@ -17471,13 +17964,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Project ID (UUID)",
-                        "name": "projectId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Restore job ID (UUID)",
                         "name": "restoreId",
                         "in": "path",
@@ -17485,11 +17971,22 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "501": {
-                        "description": "Not implemented - coming in next phase",
+                    "200": {
+                        "description": "Restore job status",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/domain_backups.Restore"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Restore job not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_emergent-company_emergent_memory_pkg_apperror.Error"
                         }
                     }
                 }
@@ -19906,6 +20403,35 @@ const docTemplate = `{
                 }
             }
         },
+        "domain_agents.ACPConfig": {
+            "type": "object",
+            "properties": {
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "inputModes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputModes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "domain_agents.ACPSSEEvent": {
             "type": "object",
             "properties": {
@@ -20033,6 +20559,26 @@ const docTemplate = `{
                 }
             }
         },
+        "domain_agents.APIResponse-array_domain_agents_AgentDefinitionSummaryDTO": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_agents.AgentDefinitionSummaryDTO"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
         "domain_agents.APIResponse-array_domain_agents_AgentQuestionDTO": {
             "type": "object",
             "properties": {
@@ -20098,6 +20644,23 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/domain_agents.AgentDTO"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain_agents.APIResponse-domain_agents_AgentDefinitionDTO": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/domain_agents.AgentDefinitionDTO"
                 },
                 "error": {
                     "type": "string"
@@ -20307,6 +20870,166 @@ const docTemplate = `{
                 }
             }
         },
+        "domain_agents.AgentDefinitionDTO": {
+            "type": "object",
+            "properties": {
+                "acpConfig": {
+                    "$ref": "#/definitions/domain_agents.ACPConfig"
+                },
+                "autoLoadSkills": {
+                    "type": "boolean"
+                },
+                "bannedTools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "defaultTimeout": {
+                    "type": "integer"
+                },
+                "defaultToolPolicy": {
+                    "$ref": "#/definitions/domain_agents.ToolPolicyDefault"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "dispatchMode": {
+                    "$ref": "#/definitions/domain_agents.AgentDispatchMode"
+                },
+                "effectiveModel": {
+                    "description": "EffectiveModel is the resolved generative model this definition would run\nwith (per-agent override, else project config → provider-credential\ngenerative model). Only populated on GET /agent-definitions/:id, not on\nlist endpoints.",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "flowType": {
+                    "$ref": "#/definitions/domain_agents.AgentFlowType"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "maxSteps": {
+                    "type": "integer"
+                },
+                "model": {
+                    "$ref": "#/definitions/domain_agents.ModelConfig"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "productId": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "systemPrompt": {
+                    "type": "string"
+                },
+                "toolPolicies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/domain_agents.ToolPolicy"
+                    }
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "$ref": "#/definitions/domain_agents.AgentVisibility"
+                },
+                "workspaceConfig": {
+                    "type": "object",
+                    "additionalProperties": {}
+                }
+            }
+        },
+        "domain_agents.AgentDefinitionSummaryDTO": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "effectiveModel": {
+                    "description": "EffectiveModel is the model this definition would run with: the per-agent\noverride when set, otherwise the project's resolved generative default\n(project config → provider-credential generative model). Empty when the\nproject has neither configured.",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "flowType": {
+                    "$ref": "#/definitions/domain_agents.AgentFlowType"
+                },
+                "hasSandboxConfig": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isDefault": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "$ref": "#/definitions/domain_agents.AgentVisibility"
+                }
+            }
+        },
+        "domain_agents.AgentDispatchMode": {
+            "type": "string",
+            "enum": [
+                "sync",
+                "queued"
+            ],
+            "x-enum-varnames": [
+                "DispatchModeSync",
+                "DispatchModeQueued"
+            ]
+        },
         "domain_agents.AgentExecutionMode": {
             "type": "string",
             "enum": [
@@ -20318,6 +21041,29 @@ const docTemplate = `{
                 "ExecutionModeSuggest",
                 "ExecutionModeExecute",
                 "ExecutionModeHybrid"
+            ]
+        },
+        "domain_agents.AgentFlowType": {
+            "type": "string",
+            "enum": [
+                "single",
+                "sequential",
+                "loop"
+            ],
+            "x-enum-comments": {
+                "FlowTypeLoop": "Loop until condition met",
+                "FlowTypeSequential": "Sequential pipeline of steps",
+                "FlowTypeSingle": "Single LLM agent"
+            },
+            "x-enum-descriptions": [
+                "Single LLM agent",
+                "Sequential pipeline of steps",
+                "Loop until condition met"
+            ],
+            "x-enum-varnames": [
+                "FlowTypeSingle",
+                "FlowTypeSequential",
+                "FlowTypeLoop"
             ]
         },
         "domain_agents.AgentQuestionDTO": {
@@ -20475,6 +21221,13 @@ const docTemplate = `{
                 "skipReason": {
                     "type": "string"
                 },
+                "spans": {
+                    "description": "Spans holds the flattened OTLP trace spans for this run, fetched from\nTempo when tracing is enabled. Omitted when tracing is disabled, Tempo is\nunreachable, or the run has no trace. The tree is reconstructible via\nparentSpanId (empty on the root span).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_agents.RunTraceSpan"
+                    }
+                },
                 "startedAt": {
                     "type": "string"
                 },
@@ -20618,6 +21371,29 @@ const docTemplate = `{
                 "TriggerTypeWebhook"
             ]
         },
+        "domain_agents.AgentVisibility": {
+            "type": "string",
+            "enum": [
+                "external",
+                "project",
+                "internal"
+            ],
+            "x-enum-comments": {
+                "VisibilityExternal": "Discoverable via ACP and admin UI",
+                "VisibilityInternal": "Only visible to other agents",
+                "VisibilityProject": "Visible in admin UI, not via ACP"
+            },
+            "x-enum-descriptions": [
+                "Discoverable via ACP and admin UI",
+                "Visible in admin UI, not via ACP",
+                "Only visible to other agents"
+            ],
+            "x-enum-varnames": [
+                "VisibilityExternal",
+                "VisibilityProject",
+                "VisibilityInternal"
+            ]
+        },
         "domain_agents.BatchTriggerDTO": {
             "type": "object",
             "required": [
@@ -20718,6 +21494,31 @@ const docTemplate = `{
                 },
                 "triggerType": {
                     "$ref": "#/definitions/domain_agents.AgentTriggerType"
+                }
+            }
+        },
+        "domain_agents.ModelConfig": {
+            "type": "object",
+            "properties": {
+                "enableThinking": {
+                    "description": "EnableThinking controls chain-of-thought reasoning for models that support\nit (e.g. Qwen3 via OpenAI-compatible endpoint). When nil the provider\ndefault applies. Set to false to suppress thinking tokens and improve\ninstruction-following for tool-heavy agents.",
+                    "type": "boolean"
+                },
+                "maxTokens": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nativeTools": {
+                    "description": "NativeTools lists Google-native tools to enable when using a Gemini model.\nValid values: \"google_search\", \"url_context\", \"code_execution\".\nTools are only activated if the selected model actually supports them —\nunsupported combinations are silently skipped.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "temperature": {
+                    "type": "number"
                 }
             }
         },
@@ -20854,6 +21655,35 @@ const docTemplate = `{
                 }
             }
         },
+        "domain_agents.RunTraceSpan": {
+            "type": "object",
+            "properties": {
+                "endUnixNano": {
+                    "type": "integer"
+                },
+                "inputTokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "outputTokens": {
+                    "type": "integer"
+                },
+                "parentSpanId": {
+                    "type": "string"
+                },
+                "spanId": {
+                    "type": "string"
+                },
+                "startUnixNano": {
+                    "type": "integer"
+                }
+            }
+        },
         "domain_agents.RunWorkspaceDTO": {
             "type": "object",
             "properties": {
@@ -20896,6 +21726,36 @@ const docTemplate = `{
                 "SessionStatusActive",
                 "SessionStatusCompleted",
                 "SessionStatusError"
+            ]
+        },
+        "domain_agents.ToolPolicy": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "description": "Confirm requires human approval before the tool executes.",
+                    "type": "boolean"
+                },
+                "disabled": {
+                    "description": "Disabled hard-blocks the tool: the executor returns an error to the\nagent without calling the tool at all. Use for policy enforcement\n(e.g. schema_policy=reuse_only blocks finalize-discovery).",
+                    "type": "boolean"
+                },
+                "message": {
+                    "description": "Message is the confirmation prompt shown to the user.\nSupports template variables: {tool_name}, {args_json}.",
+                    "type": "string"
+                }
+            }
+        },
+        "domain_agents.ToolPolicyDefault": {
+            "type": "string",
+            "enum": [
+                "allow",
+                "deny",
+                "ask"
+            ],
+            "x-enum-varnames": [
+                "ToolPolicyDefaultAllow",
+                "ToolPolicyDefaultDeny",
+                "ToolPolicyDefaultAsk"
             ]
         },
         "domain_agents.TriggerResponseDTO": {
@@ -21276,6 +22136,9 @@ const docTemplate = `{
                 "includeDeleted": {
                     "type": "boolean"
                 },
+                "includeJournal": {
+                    "type": "boolean"
+                },
                 "retentionDays": {
                     "type": "integer"
                 }
@@ -21335,6 +22198,73 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "domain_backups.Restore": {
+            "type": "object",
+            "properties": {
+                "backupId": {
+                    "type": "string"
+                },
+                "completedAt": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "overwrite | clone",
+                    "type": "string"
+                },
+                "organizationId": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "sourceProjectId": {
+                    "type": "string"
+                },
+                "stats": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "status": {
+                    "description": "pending|running|completed|failed",
+                    "type": "string"
+                },
+                "targetProjectId": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_backups.RestoreRequestDTO": {
+            "type": "object",
+            "properties": {
+                "backupId": {
+                    "type": "string"
+                },
+                "includeJournal": {
+                    "type": "boolean"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "preRestoreSnapshot": {
+                    "type": "boolean"
+                },
+                "targetProjectName": {
+                    "type": "string"
                 }
             }
         },
@@ -24510,6 +25440,10 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "offset": {
+                    "description": "number of nodes to skip before returning the page",
+                    "type": "integer"
+                },
                 "page_direction": {
                     "description": "\"forward\" or \"backward\"",
                     "type": "string"
@@ -25481,10 +26415,12 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "project",
+                "provider",
                 "none"
             ],
             "x-enum-varnames": [
                 "ModelSourceProject",
+                "ModelSourceProvider",
                 "ModelSourceNone"
             ]
         },
@@ -26223,6 +27159,17 @@ const docTemplate = `{
                 },
                 "totalJobs": {
                     "type": "integer"
+                }
+            }
+        },
+        "domain_projects.TransferProjectRequest": {
+            "type": "object",
+            "required": [
+                "orgId"
+            ],
+            "properties": {
+                "orgId": {
+                    "type": "string"
                 }
             }
         },
@@ -28260,6 +29207,13 @@ const docTemplate = `{
                 },
                 "shadowed": {
                     "type": "boolean"
+                },
+                "ui": {
+                    "description": "type-level ui block (e.g. {\"icon\":...,\"color\":...})",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
@@ -28446,6 +29400,64 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "string"
+                }
+            }
+        },
+        "domain_schemas.SchemaListInfo": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "org_id": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain_schemas.SchemaListResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "schemas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain_schemas.SchemaListInfo"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -29014,11 +30026,22 @@ const docTemplate = `{
                 "includeDebug": {
                     "type": "boolean"
                 },
+                "labels": {
+                    "description": "restrict graph-object candidates to objects carrying any of these labels at retrieval time",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "limit": {
                     "type": "integer"
                 },
                 "maxTokenBudget": {
                     "type": "integer"
+                },
+                "minScore": {
+                    "description": "drop results scoring below this fused score (0-1)",
+                    "type": "number"
                 },
                 "namespace": {
                     "description": "filter graph results by namespace",
@@ -29040,6 +30063,13 @@ const docTemplate = `{
                 "resultTypes": {
                     "$ref": "#/definitions/domain_search.UnifiedSearchResultType"
                 },
+                "types": {
+                    "description": "restrict graph-object candidates to these types at retrieval time",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "weights": {
                     "$ref": "#/definitions/domain_search.UnifiedSearchWeights"
                 }
@@ -29059,6 +30089,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/domain_search.UnifiedSearchResultItem"
                     }
+                },
+                "traceId": {
+                    "description": "retrieval trace ID for debugging/reconstruction",
+                    "type": "string"
                 }
             }
         },
@@ -29083,6 +30117,12 @@ const docTemplate = `{
                 },
                 "key": {
                     "type": "string"
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "mode": {
                     "type": "string"
@@ -29176,6 +30216,26 @@ const docTemplate = `{
                 },
                 "text": {
                     "$ref": "#/definitions/domain_search.ScoreStats"
+                }
+            }
+        },
+        "domain_search.UnifiedSearchTraceResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "query": {
+                    "type": "string"
+                },
+                "selected_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "traceId": {
+                    "type": "string"
                 }
             }
         },
@@ -30412,6 +31472,9 @@ const docTemplate = `{
                 "avatarObjectKey": {
                     "type": "string"
                 },
+                "avatarUrl": {
+                    "type": "string"
+                },
                 "displayName": {
                     "type": "string"
                 },
@@ -30625,7 +31688,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.60.0",
+	Version:          "0.73.0",
 	Host:             "localhost:5300",
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},

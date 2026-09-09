@@ -329,9 +329,10 @@ type AgentDefinitionDTO struct {
 	DefaultToolPolicy ToolPolicyDefault     `json:"defaultToolPolicy,omitempty"`
 	CreatedAt         time.Time             `json:"createdAt"`
 	UpdatedAt         time.Time             `json:"updatedAt"`
-	// EffectiveModel is the resolved generative model that will be used when
-	// this definition runs (project config → org config → env default).
-	// Only populated on GET /agent-definitions/:id, not on list endpoints.
+	// EffectiveModel is the resolved generative model this definition would run
+	// with (per-agent override, else project config → provider-credential
+	// generative model). Only populated on GET /agent-definitions/:id, not on
+	// list endpoints.
 	EffectiveModel string `json:"effectiveModel,omitempty"`
 }
 
@@ -350,6 +351,11 @@ type AgentDefinitionSummaryDTO struct {
 	HasSandboxConfig bool            `json:"hasSandboxConfig"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
+	// EffectiveModel is the model this definition would run with: the per-agent
+	// override when set, otherwise the project's resolved generative default
+	// (project config → provider-credential generative model). Empty when the
+	// project has neither configured.
+	EffectiveModel string `json:"effectiveModel,omitempty"`
 }
 
 // CreateAgentDefinitionDTO is the request DTO for creating an agent definition
