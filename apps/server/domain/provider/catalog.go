@@ -46,10 +46,10 @@ func (s *ModelCatalogService) SyncModels(ctx context.Context, provider ProviderT
 		// exposed by GET {base_url}/models. Fall back to the configured model(s)
 		// when the proxy's model list is unreachable, so the user's selection is
 		// never lost.
-		fetched, err := s.fetchOpenAICompatibleModels(ctx, cred)
+		fetched, err := s.fetchOpenAICompatibleModels(ctx, provider, cred)
 		if err != nil {
 			s.log.Warn("openai-compatible: /v1/models fetch failed, storing configured models only", logger.Error(err))
-			fetched = s.configuredOpenAIModels(cred)
+			fetched = s.configuredOpenAIModels(provider, cred)
 		}
 		models = fetched
 
@@ -162,7 +162,7 @@ func (s *ModelCatalogService) fetchModelsFromAPI(ctx context.Context, provider P
 // limits when the server advertises them (llama.cpp context_length or vLLM
 // max_model_len). The configured generative + embedding models are always
 // appended (deduped), so the catalog never loses the user's selected models.
-func (s *ModelCatalogService) fetchOpenAICompatibleModels(ctx context.Context, cred *ResolvedCredential) ([]ProviderSupportedModel, error) {
+func (s *ModelCatalogService) fetchOpenAICompatibleModels(ctx context.Context, provider ProviderType, cred *ResolvedCredential) ([]ProviderSupportedModel, error) {
 	if cred.BaseURL == "" {
 		return nil, fmt.Errorf("openai-compatible provider requires base_url")
 	}
@@ -215,6 +215,7 @@ func (s *ModelCatalogService) fetchOpenAICompatibleModels(ctx context.Context, c
 			out = max(openAICompatibleDefaultOutputTokens, ctxLen/2)
 		}
 		models = append(models, ProviderSupportedModel{
+			Provider:        provider,
 			ModelName:       name,
 			ModelType:       mt,
 			DisplayName:     displayNameForOpenAICompatible(name),
@@ -252,7 +253,7 @@ func (s *ModelCatalogService) fetchOpenAICompatibleModels(ctx context.Context, c
 // configuredOpenAIModels builds a fallback catalog from the explicitly
 // configured generative/embedding models (used when the /v1/models list is
 // unreachable). It dedupes by model name.
-func (s *ModelCatalogService) configuredOpenAIModels(cred *ResolvedCredential) []ProviderSupportedModel {
+func (s *ModelCatalogService) configuredOpenAIModels(provider ProviderType, cred *ResolvedCredential) []ProviderSupportedModel {
 	var models []ProviderSupportedModel
 	seen := map[string]bool{}
 	add := func(name string, mt ModelType) {
@@ -261,6 +262,7 @@ func (s *ModelCatalogService) configuredOpenAIModels(cred *ResolvedCredential) [
 		}
 		seen[name] = true
 		models = append(models, ProviderSupportedModel{
+			Provider:    provider,
 			ModelName:   name,
 			ModelType:   mt,
 			DisplayName: displayNameForOpenAICompatible(name),

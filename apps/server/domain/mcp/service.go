@@ -851,6 +851,10 @@ func (s *Service) GetToolDefinitions() []ToolDefinition {
 						Type:        "number",
 						Description: "Boost score by how recently the object was accessed. 0 = disabled (default). Typical range: 0.5–2.0.",
 					},
+					"min_score": {
+						Type:        "number",
+						Description: "Optional minimum score for returned results (0.0–1.0). Items whose reported score falls below this threshold are dropped. Default: 0 (no cutoff) — weak matches are still returned, ranked by score, so callers can judge relevance themselves. Note: reported scores are fused and weight-scaled (graph-object scores are multiplied by the graph fusion weight, default 0.25), so pick a value relative to the scores you observe in results.",
+					},
 					"fields": {
 						Type:        "array",
 						Description: "Optional list of property field names to return from the properties blob (e.g. [\"method\",\"path\"]). id, type, key, name are always returned. Omit to return all properties (only when field_strategy=\"full\").",
@@ -893,6 +897,10 @@ func (s *Service) GetToolDefinitions() []ToolDefinition {
 						Minimum:     intPtr(1),
 						Maximum:     intPtr(50),
 						Default:     20,
+					},
+					"min_score": {
+						Type:        "number",
+						Description: "Optional minimum score for returned results (0.0–1.0). Items whose reported score falls below this threshold are dropped. Default: 0 (no cutoff). Note: reported scores are fused and weight-scaled (graph-object scores are multiplied by the graph fusion weight, default 0.25), so pick a value relative to the scores you observe in results.",
 					},
 					"fields": {
 						Type:        "array",
@@ -2562,7 +2570,7 @@ func (s *Service) executeQueryEntities(ctx context.Context, projectID string, ar
 			Pagination: &PaginationInfo{Total: total, Limit: limit, Offset: offset, HasMore: offset+limit < total},
 			Warning:    queryEntitiesWarning,
 		}
-		return s.wrapResult(result)
+		return envelopeResult(true, result, nil, "")
 	}
 
 	result := QueryEntitiesResult{
@@ -2577,7 +2585,7 @@ func (s *Service) executeQueryEntities(ctx context.Context, projectID string, ar
 		Warning: queryEntitiesWarning,
 	}
 
-	return s.wrapResult(result)
+	return envelopeResult(true, result, nil, "")
 }
 
 // executeQueryEntitiesByIDs fetches specific entities by canonical ID list.
@@ -2670,7 +2678,7 @@ func (s *Service) executeQueryEntitiesByIDs(ctx context.Context, projectID strin
 			HasMore: false,
 		},
 	}
-	return s.wrapResult(result)
+	return envelopeResult(true, result, nil, "")
 }
 
 // executeEntityHistory returns the version history of an entity by canonical ID.
@@ -3255,10 +3263,9 @@ func (s *Service) executeUpdateEntity(ctx context.Context, projectID string, arg
 	}
 
 	opts := responseOptsFromArgs(args)
-	return s.wrapResultCompact(map[string]any{
-		"success": true,
-		"entity":  slimEntity(result, opts),
-	})
+	return envelopeResult(true, map[string]any{
+		"entity": slimEntity(result, opts),
+	}, nil, "")
 }
 
 // executeDeleteEntity deletes an existing entity.
@@ -3292,10 +3299,9 @@ func (s *Service) executeDeleteEntity(ctx context.Context, projectID string, arg
 		return nil, fmt.Errorf("delete entity: %w", err)
 	}
 
-	return s.wrapResultCompact(map[string]any{
-		"success":   true,
+	return envelopeResult(true, map[string]any{
 		"entity_id": entityID.String(),
-	})
+	}, nil, "")
 }
 
 // executeRestoreEntity restores a soft-deleted entity
@@ -3621,10 +3627,10 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 		Relationships []slimRelationship `json:"relationships,omitempty"`
 	}
 	type batchResult struct {
-		Success bool        `json:"success"`
-		Entity  *slimEntity `json:"entity,omitempty"`
-		Error   string      `json:"error,omitempty"`
-		Index   int         `json:"index"`
+		Ok     bool        `json:"ok"`
+		Entity *slimEntity `json:"entity,omitempty"`
+		Error  string      `json:"error,omitempty"`
+		Index  int         `json:"index"`
 	}
 	type similarEntity struct {
 		EntityID   string  `json:"entity_id"`
@@ -3664,9 +3670,9 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 		entityMap, ok := entityRaw.(map[string]any)
 		if !ok {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   "invalid entity specification",
-				Index:   i,
+				Ok:    false,
+				Error: "invalid entity specification",
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3675,9 +3681,9 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 		typeName, _ := entityMap["type"].(string)
 		if typeName == "" {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   "missing entity type",
-				Index:   i,
+				Ok:    false,
+				Error: "missing entity type",
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3769,9 +3775,9 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 		result, _, err := s.graphService.CreateOrUpdate(ctx, projectUUID, req, nil)
 		if err != nil {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   err.Error(),
-				Index:   i,
+				Ok:    false,
+				Error: err.Error(),
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3848,9 +3854,9 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 		}
 
 		results = append(results, batchResult{
-			Success: true,
-			Entity:  slim,
-			Index:   i,
+			Ok:     true,
+			Entity: slim,
+			Index:  i,
 		})
 		successCount++
 	}
@@ -3863,17 +3869,21 @@ func (s *Service) executeBatchCreateEntities(ctx context.Context, projectID stri
 	if similarCount > 0 {
 		message = fmt.Sprintf("%d near-duplicate entit%s found. Prefer entity-update(entity_id=…) to enrich the existing object instead of creating a duplicate. Re-call with check_similar=false to force-create.", similarCount, plural)
 	}
-	return s.wrapResult(map[string]any{
-		"ok":            failedCount == 0,
+	ok := failedCount == 0
+	errMsg := ""
+	if !ok {
+		errMsg = fmt.Sprintf("%d of %d entities failed to create", failedCount, len(entitiesRaw))
+	}
+	return envelopeResult(ok, map[string]any{
+		"results": results,
+		"message": message,
+	}, map[string]any{
 		"created":       successCount,
-		"success":       successCount, // deprecated: was an int count; use "created"
 		"failed":        failedCount,
+		"total":         len(entitiesRaw),
 		"similar":       similarResults,
 		"similar_count": similarCount,
-		"total":         len(entitiesRaw),
-		"results":       results,
-		"message":       message,
-	})
+	}, errMsg)
 }
 
 // executeBatchCreateRelationships creates one or more relationships. Always expects a "relationships" array.
@@ -3908,7 +3918,7 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		TargetID string `json:"target_id"`
 	}
 	type batchResult struct {
-		Success      bool              `json:"success"`
+		Ok           bool              `json:"ok"`
 		Relationship *slimRelationship `json:"relationship,omitempty"`
 		Error        string            `json:"error,omitempty"`
 		Index        int               `json:"index"`
@@ -3934,9 +3944,9 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		relMap, ok := relRaw.(map[string]any)
 		if !ok {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   "invalid relationship specification",
-				Index:   i,
+				Ok:    false,
+				Error: "invalid relationship specification",
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3948,9 +3958,9 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		}
 		if relType == "" {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   "missing relationship type",
-				Index:   i,
+				Ok:    false,
+				Error: "missing relationship type",
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3963,9 +3973,9 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		srcID, err := resolveRelIDOrKey(srcIDStr)
 		if err != nil {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   fmt.Sprintf("cannot resolve source_id %q: %v", srcIDStr, err),
-				Index:   i,
+				Ok:    false,
+				Error: fmt.Sprintf("cannot resolve source_id %q: %v", srcIDStr, err),
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3978,9 +3988,9 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		dstID, err := resolveRelIDOrKey(dstIDStr)
 		if err != nil {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   fmt.Sprintf("cannot resolve target_id %q: %v", dstIDStr, err),
-				Index:   i,
+				Ok:    false,
+				Error: fmt.Sprintf("cannot resolve target_id %q: %v", dstIDStr, err),
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -3994,9 +4004,9 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		// Guard: self-referential relationships are not meaningful.
 		if srcID == dstID {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   fmt.Sprintf("source_id and target_id resolve to the same entity (%s) — a relationship must connect two different entities. Use entity key strings (e.g. 'caroline-person') in source_id/target_id, not raw UUIDs.", srcID),
-				Index:   i,
+				Ok:    false,
+				Error: fmt.Sprintf("source_id and target_id resolve to the same entity (%s) — a relationship must connect two different entities. Use entity key strings (e.g. 'caroline-person') in source_id/target_id, not raw UUIDs.", srcID),
+				Index: i,
 			})
 			failedCount++
 			continue
@@ -4019,16 +4029,16 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		result, err := s.graphService.CreateRelationship(ctx, projectUUID, req)
 		if err != nil {
 			results = append(results, batchResult{
-				Success: false,
-				Error:   err.Error(),
-				Index:   i,
+				Ok:    false,
+				Error: err.Error(),
+				Index: i,
 			})
 			failedCount++
 			continue
 		}
 
 		results = append(results, batchResult{
-			Success: true,
+			Ok: true,
 			Relationship: &slimRelationship{
 				ID:       result.CanonicalID.String(),
 				Type:     result.Type,
@@ -4040,15 +4050,19 @@ func (s *Service) executeBatchCreateRelationships(ctx context.Context, projectID
 		successCount++
 	}
 
-	return s.wrapResult(map[string]any{
-		"ok":      failedCount == 0,
-		"created": successCount,
-		"success": successCount, // deprecated: was an int count; use "created"
-		"failed":  failedCount,
-		"total":   len(relationshipsRaw),
+	ok := failedCount == 0
+	errMsg := ""
+	if !ok {
+		errMsg = fmt.Sprintf("%d of %d relationships failed to create", failedCount, len(relationshipsRaw))
+	}
+	return envelopeResult(ok, map[string]any{
 		"results": results,
 		"message": fmt.Sprintf("Batch create completed: %d succeeded, %d failed", successCount, failedCount),
-	})
+	}, map[string]any{
+		"created": successCount,
+		"failed":  failedCount,
+		"total":   len(relationshipsRaw),
+	}, errMsg)
 }
 
 // getSchemaVersion computes a schema version hash
@@ -5064,6 +5078,7 @@ func (s *Service) executeProjectBriefing(ctx context.Context, projectID string, 
 	}
 
 	// Helper to parse and format any entity type from search results.
+	// Search tools return the uniform envelope {ok, data: {data: [...], ...}}.
 	formatEntities := func(result *ToolResult, header string) ([]string, bool) {
 		if result == nil || len(result.Content) == 0 {
 			return nil, false
@@ -5072,7 +5087,11 @@ func (s *Service) executeProjectBriefing(ctx context.Context, projectID string, 
 		if json.Unmarshal([]byte(result.Content[0].Text), &sr) != nil {
 			return nil, false
 		}
-		data, _ := sr["data"].([]any)
+		payload, _ := sr["data"].(map[string]any)
+		if payload == nil {
+			return nil, false
+		}
+		data, _ := payload["data"].([]any)
 		if len(data) == 0 {
 			return nil, false
 		}
@@ -5250,18 +5269,26 @@ func (s *Service) executeRemember(ctx context.Context, projectID string, args ma
 	// Async mode returns a 202 JSON body {run_id, status, document_id} instead of SSE.
 	if mode == "async" {
 		var asyncResp struct {
-			RunID string `json:"run_id"`
+			RunID      string `json:"run_id"`
+			Status     string `json:"status"`
+			DocumentID string `json:"document_id"`
 		}
-		runID := ""
+		data := map[string]any{
+			"message": "Remember started",
+		}
 		if json.NewDecoder(resp.Body).Decode(&asyncResp) == nil {
-			runID = asyncResp.RunID
+			if asyncResp.RunID != "" {
+				data["run_id"] = asyncResp.RunID
+				data["message"] = "Remember started — call remember-status(run_id) to check completion and see what was created"
+			}
+			if asyncResp.Status != "" {
+				data["status"] = asyncResp.Status
+			}
+			if asyncResp.DocumentID != "" {
+				data["document_id"] = asyncResp.DocumentID
+			}
 		}
-		text := "Remember started"
-		if runID != "" {
-			text = fmt.Sprintf("Remember started (run_id: %s)", runID)
-		}
-		text += " — call remember-status(run_id) to check completion and see what was created"
-		return &ToolResult{Content: []ContentBlock{{Type: "text", Text: text}}}, nil
+		return envelopeResult(true, data, nil, "")
 	}
 
 	// Sync mode returns a 200 JSON body {run_id, status, summary, document_id}
@@ -5277,22 +5304,23 @@ func (s *Service) executeRemember(ctx context.Context, projectID string, args ma
 		return nil, fmt.Errorf("remember: failed to decode sync response: %w", err)
 	}
 
-	var parts []string
+	data := map[string]any{
+		"message": "Remember completed",
+	}
 	if syncResp.RunID != "" {
-		parts = append(parts, fmt.Sprintf("Remember completed (run_id: %s)", syncResp.RunID))
-	} else {
-		parts = append(parts, "Remember completed")
+		data["run_id"] = syncResp.RunID
+		data["message"] = "Remember completed — call remember-status(run_id) to see what was created"
 	}
 	if syncResp.Status != "" {
-		parts = append(parts, "status: "+syncResp.Status)
+		data["status"] = syncResp.Status
 	}
-	if syncResp.Summary != nil {
-		if b, err := json.Marshal(syncResp.Summary); err == nil {
-			parts = append(parts, "summary: "+string(b))
-		}
+	if len(syncResp.Summary) > 0 {
+		data["summary"] = syncResp.Summary
 	}
-	parts = append(parts, "call remember-status(run_id) to see what was created")
-	return &ToolResult{Content: []ContentBlock{{Type: "text", Text: strings.Join(parts, "\n")}}}, nil
+	if syncResp.DocumentID != "" {
+		data["document_id"] = syncResp.DocumentID
+	}
+	return envelopeResult(true, data, nil, "")
 }
 
 // executeForget wraps the /forget REST endpoint as an MCP tool.
@@ -5344,21 +5372,25 @@ func (s *Service) executeForget(ctx context.Context, projectID string, args map[
 		return nil, mcpHTTPError("forget", resp)
 	}
 
-	// Async mode returns a 202 JSON body {run_id, status, document_id} instead of SSE.
+	// Async mode returns a 202 JSON body {run_id, status} instead of SSE.
 	if mode == "async" {
 		var asyncResp struct {
-			RunID string `json:"run_id"`
+			RunID  string `json:"run_id"`
+			Status string `json:"status"`
 		}
-		runID := ""
+		data := map[string]any{
+			"message": "Forget started",
+		}
 		if json.NewDecoder(resp.Body).Decode(&asyncResp) == nil {
-			runID = asyncResp.RunID
+			if asyncResp.RunID != "" {
+				data["run_id"] = asyncResp.RunID
+				data["message"] = "Forget started — call remember-status(run_id) to check completion and see what was removed"
+			}
+			if asyncResp.Status != "" {
+				data["status"] = asyncResp.Status
+			}
 		}
-		text := "Forget started"
-		if runID != "" {
-			text = fmt.Sprintf("Forget started (run_id: %s)", runID)
-		}
-		text += " — call remember-status(run_id) to check completion and see what was created"
-		return &ToolResult{Content: []ContentBlock{{Type: "text", Text: text}}}, nil
+		return envelopeResult(true, data, nil, "")
 	}
 
 	// Sync mode returns a 200 JSON body {run_id, status, summary} (NOT SSE —
@@ -5373,20 +5405,18 @@ func (s *Service) executeForget(ctx context.Context, projectID string, args map[
 		return nil, fmt.Errorf("forget: failed to decode sync response: %w", err)
 	}
 
-	var parts []string
+	data := map[string]any{
+		"message": "Forget completed",
+	}
 	if syncResp.RunID != "" {
-		parts = append(parts, fmt.Sprintf("Forget completed (run_id: %s)", syncResp.RunID))
-	} else {
-		parts = append(parts, "Forget completed")
+		data["run_id"] = syncResp.RunID
+		data["message"] = "Forget completed — call remember-status(run_id) to see what was removed"
 	}
 	if syncResp.Status != "" {
-		parts = append(parts, "status: "+syncResp.Status)
+		data["status"] = syncResp.Status
 	}
-	if syncResp.Summary != nil {
-		if b, err := json.Marshal(syncResp.Summary); err == nil {
-			parts = append(parts, "summary: "+string(b))
-		}
+	if len(syncResp.Summary) > 0 {
+		data["summary"] = syncResp.Summary
 	}
-	parts = append(parts, "call remember-status(run_id) to see what was removed")
-	return &ToolResult{Content: []ContentBlock{{Type: "text", Text: strings.Join(parts, "\n")}}}, nil
+	return envelopeResult(true, data, nil, "")
 }

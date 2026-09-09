@@ -397,6 +397,29 @@ Prompts generate **formatted guidance** for common tasks. Each prompt accepts ar
 
 **~50+ tools** across multiple tool files (see source for authoritative list).
 
+### Result Format
+
+Structured tool results (entity/relationship writes, search, query, remember, forget) return a uniform JSON envelope so clients can classify success/failure without per-tool heuristics:
+
+```json
+{
+  "ok": true,
+  "data": { "...tool-specific fields...": "..." },
+  "meta": { "created": 2, "failed": 0, "total": 2 }
+}
+```
+
+Contract:
+
+- `ok` (bool) — `true` on success, `false` when the operation failed. For batch tools, `false` when any item failed (partial failure is still `ok: false`).
+- `error` (string) — present and non-empty only when `ok` is `false`.
+- `data` — tool-specific payload; pre-existing field names are preserved here (`results`, `entities`, `data`, `pagination`, `run_id`, ...).
+- `meta` — numeric counts and non-payload metadata (`created`, `failed`, `total`, `similar`, ...); omitted when empty.
+- `message` (when present) is a human summary only — never a status signal. Determine status from `ok`/`error` alone.
+- Status fields are booleans (`ok`); numeric counts never use the name `success`. Per-item results in `data.results` carry their own boolean `ok`.
+
+`remember`/`forget` return structured JSON with `data.run_id` on both sync and async modes, so clients can call `remember-status` with the returned `run_id` without parsing prose.
+
 ### Quick Reference by Category
 
 > **Note:** Tool counts below are approximate. For the authoritative list consult the source files in `apps/server/domain/mcp/`.

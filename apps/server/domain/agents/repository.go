@@ -592,13 +592,13 @@ Response size thresholds:
 When a question requires a complete list ("how many", "list all", "which ones"):
 - Step 1: Call entity-type-list first — it returns exact per-type counts at near-zero cost. Use this to decide whether pagination is needed before fetching any entities.
 - Step 2: If count ≤ 200, fetch in one call with limit=200.
-- Step 3: If count > 200, paginate: call entity-query repeatedly with limit=200, incrementing offset by 200 each time, until has_more=false. The first response includes pagination.total so you can compute total pages upfront.
+- Step 3: If count > 200, paginate: call entity-query repeatedly with limit=200, incrementing offset by 200 each time, until data.pagination.has_more=false. Tool results are wrapped in a {"ok", "data"} envelope — entity-query's fields live under data (entities at data.entities, pagination at data.pagination), so read data.pagination.total / data.pagination.has_more. The first response includes data.pagination.total so you can compute total pages upfront.
 - Step 4: Accumulate results across pages in your context. Do NOT re-fetch pages already retrieved.
 - Step 5: Summarize — report counts, group by key properties, highlight patterns. For >200 results, list id+name only and offer to fetch details on request via entity-query ids=[...].
 
 ## Versioning
 Entities are versioned. Each update creates a new version; the canonical ID stays constant across versions.
-- entity-query always returns the current (HEAD) version. The response includes a "version" field (integer, starting at 1).
+- entity-query always returns the current (HEAD) version. Each entity in the response's data.entities carries a "version" field (integer, starting at 1).
 - To see all versions of an entity: call entity-history with the canonical entity_id. Returns [{version, physical_id, updated_at}, ...].
 - To fetch a specific historical version's properties: call entity-query with ids=[physical_id] (the physical_id from entity-history, NOT the canonical_id).`
 

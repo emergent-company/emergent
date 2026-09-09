@@ -191,8 +191,8 @@ func (r *Repository) UpsertSupportedModels(ctx context.Context, models []Provide
 		On("CONFLICT (provider, model_name) DO UPDATE").
 		Set("model_type = EXCLUDED.model_type").
 		Set("display_name = EXCLUDED.display_name").
-		Set("max_input_tokens = COALESCE(EXCLUDED.max_input_tokens, kb.provider_supported_models.max_input_tokens)").
-		Set("max_output_tokens = COALESCE(EXCLUDED.max_output_tokens, kb.provider_supported_models.max_output_tokens)").
+		Set("max_input_tokens = COALESCE(EXCLUDED.max_input_tokens, psm.max_input_tokens)").
+		Set("max_output_tokens = COALESCE(EXCLUDED.max_output_tokens, psm.max_output_tokens)").
 		Set("last_synced = NOW()").
 		Exec(ctx)
 

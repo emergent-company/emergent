@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/emergent-company/emergent.memory/domain/graph"
 )
 
 func TestCalcScoreStats(t *testing.T) {
@@ -114,6 +116,63 @@ func newTestService() *Service {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestHybridSearchRequestFromUnified(t *testing.T) {
+	branchID := uuid.New().String()
+	namespace := "system"
+	recencyBoost := float32(1.5)
+	recencyHalfLife := float32(48)
+	accessBoost := float32(0.7)
+	vector := []float32{0.1, 0.2, 0.3}
+
+	req := &UnifiedSearchRequest{
+		Query:           "quarterly report",
+		Limit:           10,
+		Types:           []string{"Decision", "Project"},
+		Labels:          []string{"important"},
+		Namespace:       &namespace,
+		BranchID:        &branchID,
+		RecencyBoost:    &recencyBoost,
+		RecencyHalfLife: &recencyHalfLife,
+		AccessBoost:     &accessBoost,
+	}
+
+	hybrid := hybridSearchRequestFromUnified(req, vector)
+	assert.IsType(t, &graph.HybridSearchRequest{}, hybrid)
+
+	assert.Equal(t, "quarterly report", hybrid.Query)
+	assert.Equal(t, vector, hybrid.Vector)
+	assert.Equal(t, 10, hybrid.Limit)
+	assert.Equal(t, []string{"Decision", "Project"}, hybrid.Types)
+	assert.Equal(t, []string{"important"}, hybrid.Labels)
+	assert.Equal(t, &namespace, hybrid.Namespace)
+	assert.NotNil(t, hybrid.BranchID)
+	assert.Equal(t, branchID, hybrid.BranchID.String())
+	assert.Equal(t, &recencyBoost, hybrid.RecencyBoost)
+	assert.Equal(t, &recencyHalfLife, hybrid.RecencyHalfLife)
+	assert.Equal(t, &accessBoost, hybrid.AccessBoost)
+
+	t.Run("empty types and labels stay empty", func(t *testing.T) {
+		req := &UnifiedSearchRequest{
+			Query: "q",
+			Limit: 5,
+		}
+		hybrid := hybridSearchRequestFromUnified(req, nil)
+		assert.Empty(t, hybrid.Types)
+		assert.Empty(t, hybrid.Labels)
+		assert.Nil(t, hybrid.Namespace)
+		assert.Nil(t, hybrid.BranchID)
+		assert.Nil(t, hybrid.RecencyBoost)
+		assert.Nil(t, hybrid.AccessBoost)
+	})
+
+	t.Run("invalid branch id ignored", func(t *testing.T) {
+		branch := "not-a-uuid"
+		req := &UnifiedSearchRequest{Query: "q", BranchID: &branch}
+		hybrid := hybridSearchRequestFromUnified(req, nil)
+		assert.Nil(t, hybrid.BranchID)
+	})
+}
 
 func TestGraphResultToItem(t *testing.T) {
 	svc := newTestService()

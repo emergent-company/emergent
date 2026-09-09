@@ -93,6 +93,24 @@ func (s *Service) getSystemNamespaceTypes(ctx context.Context, projectID string,
 	return blocked, nil
 }
 
+// parseMinScoreArg parses the optional "min_score" tool argument (0-1).
+// Returns nil when the argument is absent (no cutoff).
+func parseMinScoreArg(args map[string]any) (*float32, error) {
+	raw, ok := args["min_score"]
+	if !ok {
+		return nil, nil
+	}
+	f, ok := raw.(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid min_score: must be a number between 0 and 1")
+	}
+	if f < 0 || f > 1 {
+		return nil, fmt.Errorf("invalid min_score: must be between 0 and 1")
+	}
+	v := float32(f)
+	return &v, nil
+}
+
 // executeHybridSearch performs hybrid search (FTS + vector + graph context + relationship embeddings)
 func (s *Service) executeHybridSearch(ctx context.Context, projectID string, args map[string]any) (*ToolResult, error) {
 	projectUUID, err := uuid.Parse(projectID)
@@ -119,6 +137,12 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 	}
 	if limit > 100 {
 		limit = 100
+	}
+
+	// Optional fused-score cutoff (0-1). nil = no cutoff, weak matches returned ranked.
+	minScore, err := parseMinScoreArg(args)
+	if err != nil {
+		return nil, err
 	}
 
 	var types []string
@@ -154,8 +178,11 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 
 	if s.searchSvc != nil {
 		unifiedReq := &search.UnifiedSearchRequest{
-			Query: query,
-			Limit: limit,
+			Query:    query,
+			Limit:    limit,
+			Types:    types,
+			Labels:   labels,
+			MinScore: minScore,
 		}
 
 		// Pass namespace to unified search for DB-level filtering.
@@ -184,7 +211,7 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 				"project_id", projectID,
 			)
 		} else {
-			return s.wrapResultCompact(slimSearchResponse(s.mapUnifiedToSearchResponse(res, types, labels, allowedTypes, blockedTypes), opts))
+			return envelopeSearchResponse(s.mapUnifiedToSearchResponse(res, types, labels, allowedTypes, blockedTypes), opts)
 		}
 	}
 
@@ -227,10 +254,22 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 		}
 		filtered = append(filtered, item)
 	}
+
+	// Optional fused-score cutoff on the fallback graph path (the unified path
+	// applies the cutoff inside fusion). nil/0 keeps baseline behavior.
+	if minScore != nil && *minScore > 0 {
+		kept := filtered[:0]
+		for _, item := range filtered {
+			if item.Score >= *minScore {
+				kept = append(kept, item)
+			}
+		}
+		filtered = kept
+	}
 	results.Data = filtered
 	results.Total = len(filtered)
 
-	return s.wrapResultCompact(slimSearchResponse(results, opts))
+	return envelopeSearchResponse(results, opts)
 }
 
 // mapUnifiedToSearchResponse converts unified search results back to graph.SearchResponse
@@ -362,6 +401,12 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 		limit = 50
 	}
 
+	// Optional fused-score cutoff (0-1). nil = no cutoff, weak matches returned ranked.
+	minScore, err := parseMinScoreArg(args)
+	if err != nil {
+		return nil, err
+	}
+
 	var types []string
 	if t, ok := args["types"].([]any); ok {
 		for _, v := range t {
@@ -386,8 +431,10 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 	// leg full signal even for multi-word queries that FTS can't match well.
 	if s.searchSvc != nil {
 		unifiedReq := &search.UnifiedSearchRequest{
-			Query: query,
-			Limit: limit,
+			Query:    query,
+			Limit:    limit,
+			Types:    types,
+			MinScore: minScore,
 		}
 		// Pass namespace for DB-level filtering.
 		if namespaceFilter != "" && namespaceFilter != "all" {
@@ -398,7 +445,7 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 			s.log.WarnContext(ctx, "unified search failed in semantic_search, falling back",
 				"error", err, "project_id", projectID)
 		} else {
-			return s.wrapResultCompact(slimSearchResponse(s.mapUnifiedToSearchResponse(res, types, nil, allowedTypes, blockedTypes), opts))
+			return envelopeSearchResponse(s.mapUnifiedToSearchResponse(res, types, nil, allowedTypes, blockedTypes), opts)
 		}
 	}
 
@@ -429,10 +476,22 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 		}
 		filtered = append(filtered, item)
 	}
+
+	// Optional fused-score cutoff on the fallback graph path (the unified path
+	// applies the cutoff inside fusion). nil/0 keeps baseline behavior.
+	if minScore != nil && *minScore > 0 {
+		kept := filtered[:0]
+		for _, item := range filtered {
+			if item.Score >= *minScore {
+				kept = append(kept, item)
+			}
+		}
+		filtered = kept
+	}
 	results.Data = filtered
 	results.Total = len(filtered)
 
-	return s.wrapResultCompact(slimSearchResponse(results, opts))
+	return envelopeSearchResponse(results, opts)
 }
 
 // executeFindSimilar finds entities similar to a given entity
@@ -720,10 +779,9 @@ func (s *Service) executeDeleteRelationship(ctx context.Context, projectID strin
 		return nil, fmt.Errorf("delete relationship: %w", err)
 	}
 
-	return s.wrapResultCompact(map[string]any{
-		"success":         true,
+	return envelopeResult(true, map[string]any{
 		"relationship_id": relID.String(),
-	})
+	}, nil, "")
 }
 
 // executeListTags gets all unique tags in the project
