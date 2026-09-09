@@ -305,4 +305,33 @@ func TestConvertToolResult(t *testing.T) {
 		assert.Equal(t, false, out["ok"])
 		assert.Equal(t, "boom", out["error"])
 	})
+
+	t.Run("nested envelope round-trips ok/data/meta intact", func(t *testing.T) {
+		out, err := convertToolResult(&mcp.ToolResult{
+			Content: []mcp.ContentBlock{{Type: "text", Text: `{"ok":true,"data":{"x":1},"meta":{"n":2}}`}},
+		})
+		require.NoError(t, err)
+		// ok must survive untouched (no re-injection of a uniform ok=true).
+		assert.Equal(t, true, out["ok"])
+		data, ok := out["data"].(map[string]any)
+		require.True(t, ok, "data should remain a nested map, got %T", out["data"])
+		assert.Equal(t, float64(1), data["x"])
+		meta, ok := out["meta"].(map[string]any)
+		require.True(t, ok, "meta should remain a nested map, got %T", out["meta"])
+		assert.Equal(t, float64(2), meta["n"])
+		assert.NotContains(t, out, "result", "enveloped result must not be re-wrapped under result")
+	})
+
+	t.Run("failed envelope preserves ok=false and error", func(t *testing.T) {
+		out, err := convertToolResult(&mcp.ToolResult{
+			Content: []mcp.ContentBlock{{Type: "text", Text: `{"ok":false,"error":"boom","data":{}}`}},
+		})
+		require.NoError(t, err)
+		// ok=false must survive — injecting a uniform ok=true would flip status.
+		assert.Equal(t, false, out["ok"])
+		assert.Equal(t, "boom", out["error"])
+		data, ok := out["data"].(map[string]any)
+		require.True(t, ok, "data should remain a nested map, got %T", out["data"])
+		assert.Empty(t, data)
+	})
 }
