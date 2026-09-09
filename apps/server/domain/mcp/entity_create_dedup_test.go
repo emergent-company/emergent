@@ -19,22 +19,32 @@ import (
 )
 
 // entityCreateDedupResult mirrors the JSON response of executeBatchCreateEntities
-// for the fields exercised by the near-duplicate (check_similar) tests.
+// for the fields exercised by the near-duplicate (check_similar) tests. The
+// batch tool now returns the uniform envelope {ok, data: {results, message},
+// meta: {created, failed, total, similar, similar_count}}.
 type entityCreateDedupResult struct {
-	OK           bool   `json:"ok"`
-	Created      int    `json:"created"`
-	Failed       int    `json:"failed"`
-	SimilarCount int    `json:"similar_count"`
-	Total        int    `json:"total"`
-	Message      string `json:"message"`
-	Similar      []struct {
-		EntityID   string  `json:"entity_id"`
-		Key        string  `json:"key"`
-		Type       string  `json:"type"`
-		Content    string  `json:"content"`
-		Similarity float64 `json:"similarity"`
-		Suggested  string  `json:"suggested"`
-	} `json:"similar"`
+	OK   bool `json:"ok"`
+	Data struct {
+		Results []struct {
+			OK    bool   `json:"ok"`
+			Index int    `json:"index"`
+			Error string `json:"error"`
+		} `json:"results"`
+	} `json:"data"`
+	Meta struct {
+		Created      int `json:"created"`
+		Failed       int `json:"failed"`
+		Total        int `json:"total"`
+		SimilarCount int `json:"similar_count"`
+		Similar      []struct {
+			EntityID   string  `json:"entity_id"`
+			Key        string  `json:"key"`
+			Type       string  `json:"type"`
+			Content    string  `json:"content"`
+			Similarity float64 `json:"similarity"`
+			Suggested  string  `json:"suggested"`
+		} `json:"similar"`
+	} `json:"meta"`
 }
 
 // newEntityCreateDedupService wires a real graph.Service (with a fake embedder
@@ -81,11 +91,25 @@ func seedNoteObject(t *testing.T, db bun.IDB, projectID string, orgID string) st
 }
 
 // runEntityCreate executes executeBatchCreateEntities and decodes the JSON text
-// response into an entityCreateDedupResult.
+// response into an entityCreateDedupResult. It also asserts the uniform
+// envelope contract: top-level ok/data/meta only, no legacy top-level fields.
 func runEntityCreate(t *testing.T, svc *Service, ctx context.Context, projectID string, args map[string]any) entityCreateDedupResult {
 	t.Helper()
 	res, err := svc.executeBatchCreateEntities(ctx, projectID, args)
 	text := toolResultText(t, res, err)
+
+	var top map[string]any
+	require.NoError(t, json.Unmarshal([]byte(text), &top))
+	okVal, isBool := top["ok"].(bool)
+	require.True(t, isBool, "top-level ok must be a bool, got %T", top["ok"])
+	require.True(t, okVal, "successful entity-create must carry ok=true")
+	for _, legacy := range []string{"success", "created", "failed", "total", "similar", "similar_count", "message"} {
+		_, present := top[legacy]
+		assert.False(t, present, "legacy field %q must not appear at top level", legacy)
+	}
+	require.Contains(t, top, "data", "top-level data must be present")
+	require.Contains(t, top, "meta", "top-level meta must be present")
+
 	var out entityCreateDedupResult
 	require.NoError(t, json.Unmarshal([]byte(text), &out))
 	return out
@@ -114,13 +138,13 @@ func TestEntityCreateCheckSimilarFlagsNearDuplicate(t *testing.T) {
 	})
 
 	assert.True(t, out.OK, "no failures, so ok must be true")
-	assert.Equal(t, 0, out.Created, "near-duplicate must NOT be created")
-	assert.Equal(t, 1, out.SimilarCount)
-	require.Len(t, out.Similar, 1)
-	assert.Equal(t, objID, out.Similar[0].EntityID, "entity_id must be the seeded canonical id")
-	assert.Equal(t, "Note", out.Similar[0].Type)
-	assert.Equal(t, "edit_existing", out.Similar[0].Suggested)
-	assert.GreaterOrEqual(t, out.Similar[0].Similarity, 0.85, "identical vectors must score >= threshold")
+	assert.Equal(t, 0, out.Meta.Created, "near-duplicate must NOT be created")
+	assert.Equal(t, 1, out.Meta.SimilarCount)
+	require.Len(t, out.Meta.Similar, 1)
+	assert.Equal(t, objID, out.Meta.Similar[0].EntityID, "entity_id must be the seeded canonical id")
+	assert.Equal(t, "Note", out.Meta.Similar[0].Type)
+	assert.Equal(t, "edit_existing", out.Meta.Similar[0].Suggested)
+	assert.GreaterOrEqual(t, out.Meta.Similar[0].Similarity, 0.85, "identical vectors must score >= threshold")
 }
 
 // TestEntityCreateCheckSimilarCreatesWhenNoMatch verifies that check_similar
@@ -142,9 +166,9 @@ func TestEntityCreateCheckSimilarCreatesWhenNoMatch(t *testing.T) {
 		"check_similar": true,
 	})
 
-	assert.Equal(t, 1, out.Created, "no Person exists, so create must proceed")
-	assert.Equal(t, 0, out.SimilarCount)
-	assert.Empty(t, out.Similar)
+	assert.Equal(t, 1, out.Meta.Created, "no Person exists, so create must proceed")
+	assert.Equal(t, 0, out.Meta.SimilarCount)
+	assert.Empty(t, out.Meta.Similar)
 }
 
 // TestEntityCreateBackwardCompatNoCheckSimilar verifies that the default path
@@ -167,7 +191,7 @@ func TestEntityCreateBackwardCompatNoCheckSimilar(t *testing.T) {
 		},
 	})
 
-	assert.Equal(t, 1, out.Created, "gate is off without check_similar, so create proceeds")
-	assert.Equal(t, 0, out.SimilarCount)
-	assert.Empty(t, out.Similar)
+	assert.Equal(t, 1, out.Meta.Created, "gate is off without check_similar, so create proceeds")
+	assert.Equal(t, 0, out.Meta.SimilarCount)
+	assert.Empty(t, out.Meta.Similar)
 }

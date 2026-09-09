@@ -33,21 +33,23 @@ func ei(objectID, status string) mcp.EmbeddingJobInfo {
 func TestAggregateRememberStatus_SuccessfulCreates(t *testing.T) {
 	calls := []*AgentRunToolCall{
 		tc("entity-create", nil, map[string]any{
-			"success": float64(2),
-			"failed":  float64(0),
-			"total":   float64(2),
-			"results": []any{
-				map[string]any{
-					"success": true,
-					"entity":  map[string]any{"id": "obj-1", "type": "Person"},
-					"index":   float64(0),
+			"ok": true,
+			"data": map[string]any{
+				"results": []any{
+					map[string]any{
+						"ok":     true,
+						"entity": map[string]any{"id": "obj-1", "type": "Person"},
+						"index":  float64(0),
+					},
+					map[string]any{
+						"ok":     true,
+						"entity": map[string]any{"id": "obj-2", "type": "Company", "key": "acme"},
+						"index":  float64(1),
+					},
 				},
-				map[string]any{
-					"success": true,
-					"entity":  map[string]any{"id": "obj-2", "type": "Company", "key": "acme"},
-					"index":   float64(1),
-				},
+				"message": "Batch create completed: 2 created, 0 failed, 0 near-duplicate",
 			},
+			"meta": map[string]any{"created": float64(2), "failed": float64(0), "total": float64(2)},
 		}),
 	}
 
@@ -72,18 +74,23 @@ func TestAggregateRememberStatus_SuccessfulCreates(t *testing.T) {
 func TestAggregateRememberStatus_InlineRelationships(t *testing.T) {
 	calls := []*AgentRunToolCall{
 		tc("entity-create", nil, map[string]any{
-			"results": []any{
-				map[string]any{
-					"success": true,
-					"entity": map[string]any{
-						"id":   "obj-1",
-						"type": "Decision",
-						"relationships": []any{
-							map[string]any{"id": "rel-1", "type": "about", "target_id": "obj-9"},
+			"ok": true,
+			"data": map[string]any{
+				"results": []any{
+					map[string]any{
+						"ok": true,
+						"entity": map[string]any{
+							"id":   "obj-1",
+							"type": "Decision",
+							"relationships": []any{
+								map[string]any{"id": "rel-1", "type": "about", "target_id": "obj-9"},
+							},
 						},
+						"index": float64(0),
 					},
 				},
 			},
+			"meta": map[string]any{"created": float64(1), "failed": float64(0), "total": float64(1)},
 		}),
 	}
 
@@ -106,13 +113,13 @@ func TestAggregateRememberStatus_InlineRelationships(t *testing.T) {
 func TestAggregateRememberStatus_SuccessfulUpdates(t *testing.T) {
 	calls := []*AgentRunToolCall{
 		tc("entity-update", nil, map[string]any{
-			"success": true,
-			"entity":  map[string]any{"id": "obj-1", "type": "Person"},
-			"message": "Entity updated successfully",
+			"ok":   true,
+			"data": map[string]any{"entity": map[string]any{"id": "obj-1", "type": "Person"}},
 		}),
 		tc("entity-update", nil, map[string]any{
-			"success": false,
-			"error":   "boom",
+			"ok":    false,
+			"error": "boom",
+			"data":  map[string]any{},
 		}),
 	}
 
@@ -130,28 +137,49 @@ func TestAggregateRememberStatus_SuccessfulUpdates(t *testing.T) {
 }
 
 func TestAggregateRememberStatus_RelationshipCreates(t *testing.T) {
-	shapes := []map[string]any{
-		{"id": "rel-1", "type": "works_at"},
-		{"relationship": map[string]any{"id": "rel-2", "type": "reports_to"}},
-		{"relationship_id": "rel-3", "relationship_type": "mentors"},
-		{"data": map[string]any{"id": "rel-4"}},
-	}
-
-	var calls []*AgentRunToolCall
-	for _, out := range shapes {
-		calls = append(calls, tc("entity-relationship-create", nil, out))
+	// Mirrors the envelope emitted by relationship-create: a batch result with
+	// per-item ok flags and relationship payloads under data.results[].
+	calls := []*AgentRunToolCall{
+		tc("entity-relationship-create", nil, map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"results": []any{
+					map[string]any{
+						"ok": true,
+						"relationship": map[string]any{
+							"id": "rel-1", "type": "works_at", "source_id": "a", "target_id": "b",
+						},
+						"index": float64(0),
+					},
+					map[string]any{
+						"ok": true,
+						"relationship": map[string]any{
+							"id": "rel-2", "type": "reports_to", "source_id": "b", "target_id": "c",
+						},
+						"index": float64(1),
+					},
+					map[string]any{
+						"ok":    false,
+						"error": "cannot resolve target_id",
+						"index": float64(2),
+					},
+				},
+				"message": "Batch create completed: 2 succeeded, 1 failed",
+			},
+			"meta": map[string]any{"created": float64(2), "failed": float64(1), "total": float64(3)},
+		}),
 	}
 
 	agg := aggregateRememberStatus(calls)
 
-	if agg.RelationshipsCreated != 4 {
-		t.Errorf("RelationshipsCreated = %d, want 4", agg.RelationshipsCreated)
+	if agg.RelationshipsCreated != 2 {
+		t.Errorf("RelationshipsCreated = %d, want 2", agg.RelationshipsCreated)
 	}
-	want := []string{"rel-1", "rel-2", "rel-3", "rel-4"}
+	want := []string{"rel-1", "rel-2"}
 	if !reflect.DeepEqual(agg.CreatedRelationshipIDs, want) {
 		t.Errorf("CreatedRelationshipIDs = %v, want %v", agg.CreatedRelationshipIDs, want)
 	}
-	if !reflect.DeepEqual(agg.DiscoveredTypes, []string{"works_at", "reports_to", "mentors"}) {
+	if !reflect.DeepEqual(agg.DiscoveredTypes, []string{"works_at", "reports_to"}) {
 		t.Errorf("DiscoveredTypes = %v", agg.DiscoveredTypes)
 	}
 }
@@ -159,23 +187,30 @@ func TestAggregateRememberStatus_RelationshipCreates(t *testing.T) {
 func TestAggregateRememberStatus_MixedSuccessFailure(t *testing.T) {
 	calls := []*AgentRunToolCall{
 		tc("entity-create", nil, map[string]any{
-			"results": []any{
-				map[string]any{"success": true, "entity": map[string]any{"id": "ok-1", "type": "Person"}},
-				map[string]any{"success": false, "error": "duplicate"},
+			"ok": false, // partial batch failure → top-level ok=false
+			"data": map[string]any{
+				"results": []any{
+					map[string]any{"ok": true, "entity": map[string]any{"id": "ok-1", "type": "Person"}},
+					map[string]any{"ok": false, "error": "duplicate"},
+				},
 			},
+			"meta": map[string]any{"created": float64(1), "failed": float64(1), "total": float64(2)},
 		}),
 		{
 			ToolName: "entity-create",
 			Output: map[string]any{
-				"results": []any{
-					map[string]any{"success": true, "entity": map[string]any{"id": "ok-2", "type": "Task"}},
+				"ok": true,
+				"data": map[string]any{
+					"results": []any{
+						map[string]any{"ok": true, "entity": map[string]any{"id": "ok-2", "type": "Task"}},
+					},
 				},
 			},
 			Status: "failed", // whole call failed (toolErr recorded)
 		},
 		{
 			ToolName: "entity-update",
-			Output:   map[string]any{"success": true, "entity": map[string]any{"id": "u-1", "type": "Person"}},
+			Output:   map[string]any{"ok": true, "data": map[string]any{"entity": map[string]any{"id": "u-1", "type": "Person"}}},
 			Status:   "completed",
 		},
 	}
@@ -222,18 +257,23 @@ func TestAggregateRememberStatus_ZeroMutations(t *testing.T) {
 func TestAggregateRememberStatus_MalformedOutputSkipped(t *testing.T) {
 	calls := []*AgentRunToolCall{
 		// results is a string, not an array
-		tc("entity-create", nil, map[string]any{"results": "not-an-array", "success": 1}),
+		tc("entity-create", nil, map[string]any{"ok": true, "data": map[string]any{"results": "not-an-array"}}),
+		// envelope without a data layer
+		tc("entity-create", nil, map[string]any{"ok": true, "error": "boom"}),
 		// entity is a string, not a map
-		tc("entity-update", nil, map[string]any{"success": true, "entity": "oops"}),
-		// relationship data is malformed
-		tc("entity-relationship-create", nil, map[string]any{"relationship": "nope"}),
+		tc("entity-update", nil, map[string]any{"ok": true, "data": map[string]any{"entity": "oops"}}),
+		// entity-update without an explicit ok flag
+		tc("entity-update", nil, map[string]any{"data": map[string]any{"entity": map[string]any{"id": "x", "type": "Person"}}}),
+		// relationship data is malformed (result item not a map, missing payload)
+		tc("entity-relationship-create", nil, map[string]any{"ok": true, "data": map[string]any{"results": []any{"nope"}}}),
+		tc("entity-relationship-create", nil, map[string]any{"ok": true, "data": map[string]any{"results": []any{map[string]any{"ok": true}}}}),
 		// completely empty output
 		tc("entity-create", nil, map[string]any{}),
 		// nil output
 		{ToolName: "entity-create", Status: "completed", Output: nil},
-		// deletes without an explicit success flag
-		tc("entity-delete", map[string]any{"entity_id": "obj-x"}, map[string]any{"message": "no success flag"}),
-		tc("relationship-delete", map[string]any{"relationship_id": "rel-x"}, map[string]any{"message": "no success flag"}),
+		// deletes without an explicit ok flag
+		tc("entity-delete", map[string]any{"entity_id": "obj-x"}, map[string]any{"data": map[string]any{"entity_id": "obj-x"}, "message": "no ok flag"}),
+		tc("relationship-delete", map[string]any{"relationship_id": "rel-x"}, map[string]any{"data": map[string]any{"relationship_id": "rel-x"}, "message": "no ok flag"}),
 	}
 
 	agg := aggregateRememberStatus(calls)
@@ -247,6 +287,65 @@ func TestAggregateRememberStatus_MalformedOutputSkipped(t *testing.T) {
 	if len(agg.CreatedObjectIDs) != 0 || len(agg.CreatedRelationshipIDs) != 0 ||
 		len(agg.DeletedObjectIDs) != 0 || len(agg.DeletedRelationshipIDs) != 0 || len(agg.DiscoveredTypes) != 0 {
 		t.Errorf("expected no ids/types from malformed output, got %+v", agg)
+	}
+}
+
+// TestAggregateRememberStatus_LegacyShapeYieldsZero pins the silent-zero trap
+// (design D5): tool outputs recorded in the pre-envelope shape — top-level
+// results[] with per-item bool "success" and no ok/data wrapping — must NOT be
+// counted by the envelope-based parsers. If a future producer change regresses
+// the parsers back to the legacy shape, this test fails loudly instead of
+// letting remember-status counts silently zero.
+func TestAggregateRememberStatus_LegacyShapeYieldsZero(t *testing.T) {
+	calls := []*AgentRunToolCall{
+		tc("entity-create", nil, map[string]any{
+			"success": float64(1),
+			"failed":  float64(0),
+			"total":   float64(1),
+			"results": []any{
+				map[string]any{
+					"success": true,
+					"entity":  map[string]any{"id": "legacy-obj-1", "type": "Person"},
+					"index":   float64(0),
+				},
+			},
+		}),
+		// Single-entity legacy form: top-level success + entity.
+		tc("entity-create", nil, map[string]any{
+			"success": true,
+			"entity":  map[string]any{"id": "legacy-obj-2", "type": "Note"},
+		}),
+		tc("entity-update", nil, map[string]any{
+			"success": true,
+			"entity":  map[string]any{"id": "legacy-u-1", "type": "Person"},
+		}),
+		tc("entity-relationship-create", nil, map[string]any{
+			"relationship": map[string]any{"id": "legacy-rel-1", "type": "works_at"},
+		}),
+		tc("entity-delete", map[string]any{"entity_id": "legacy-d-1"}, map[string]any{
+			"success": true,
+			"message": "Entity deleted successfully",
+		}),
+		tc("relationship-delete", map[string]any{"relationship_id": "legacy-dr-1"}, map[string]any{
+			"success":      true,
+			"relationship": map[string]any{"id": "legacy-dr-1", "type": "works_at"},
+		}),
+	}
+
+	agg := aggregateRememberStatus(calls)
+
+	if agg.ObjectsCreated != 0 || agg.ObjectsUpdated != 0 || agg.RelationshipsCreated != 0 {
+		t.Errorf("legacy top-level shape must not be counted, got %+v", agg)
+	}
+	if agg.ObjectsDeleted != 0 || agg.RelationshipsDeleted != 0 {
+		t.Errorf("legacy top-level shape must not be counted, got %+v", agg)
+	}
+	if len(agg.CreatedObjectIDs) != 0 || len(agg.CreatedRelationshipIDs) != 0 ||
+		len(agg.DeletedObjectIDs) != 0 || len(agg.DeletedRelationshipIDs) != 0 || len(agg.DiscoveredTypes) != 0 {
+		t.Errorf("legacy top-level shape must yield no ids/types, got %+v", agg)
+	}
+	if agg.Summary != "No graph changes were made by this run." {
+		t.Errorf("Summary = %q, want no-change summary", agg.Summary)
 	}
 }
 
@@ -315,25 +414,32 @@ func TestGraphMutatingToolAllowlist(t *testing.T) {
 
 func TestAggregateRememberStatus_Deletes(t *testing.T) {
 	calls := []*AgentRunToolCall{
-		// entity-delete output only carries success + message; the id comes from input
-		tc("entity-delete", map[string]any{"entity_id": "obj-1"}, map[string]any{"success": true, "message": "Entity deleted successfully"}),
-		tc("entity-delete", map[string]any{"entity_id": "obj-2"}, map[string]any{"success": true, "message": "Entity deleted successfully"}),
-		// relationship-delete output carries the tombstone relationship payload
+		// entity-delete output carries the deleted id under data.entity_id
+		tc("entity-delete", map[string]any{"entity_id": "obj-1"}, map[string]any{
+			"ok":   true,
+			"data": map[string]any{"entity_id": "obj-1"},
+		}),
+		tc("entity-delete", map[string]any{"entity_id": "obj-2"}, map[string]any{
+			"ok":   true,
+			"data": map[string]any{"entity_id": "obj-2"},
+		}),
+		// entity-delete with the id only in the input args (no data.entity_id)
+		tc("entity-delete", map[string]any{"entity_id": "obj-4"}, map[string]any{"ok": true, "data": map[string]any{}}),
+		// relationship-delete output carries the tombstone id under data.relationship_id
 		tc("relationship-delete", map[string]any{"relationship_id": "rel-1"}, map[string]any{
-			"success":      true,
-			"relationship": map[string]any{"id": "rel-1", "type": "works_at"},
-			"message":      "Relationship deleted successfully",
+			"ok":   true,
+			"data": map[string]any{"relationship_id": "rel-1"},
 		}),
 		// relationship-delete with id only in the input args (malformed-ish output)
-		tc("relationship-delete", map[string]any{"relationship_id": "rel-2"}, map[string]any{"success": true, "message": "Relationship deleted successfully"}),
-		// failed delete — success false in output, counted as no mutation
-		tc("entity-delete", map[string]any{"entity_id": "obj-3"}, map[string]any{"success": false, "error": "not found"}),
+		tc("relationship-delete", map[string]any{"relationship_id": "rel-2"}, map[string]any{"ok": true, "data": map[string]any{}}),
+		// failed delete — ok=false in output, counted as no mutation
+		tc("entity-delete", map[string]any{"entity_id": "obj-3"}, map[string]any{"ok": false, "error": "not found", "data": map[string]any{}}),
 	}
 
 	agg := aggregateRememberStatus(calls)
 
-	if agg.ObjectsDeleted != 2 {
-		t.Errorf("ObjectsDeleted = %d, want 2", agg.ObjectsDeleted)
+	if agg.ObjectsDeleted != 3 {
+		t.Errorf("ObjectsDeleted = %d, want 3", agg.ObjectsDeleted)
 	}
 	if agg.RelationshipsDeleted != 2 {
 		t.Errorf("RelationshipsDeleted = %d, want 2", agg.RelationshipsDeleted)
@@ -341,13 +447,13 @@ func TestAggregateRememberStatus_Deletes(t *testing.T) {
 	if agg.ObjectsCreated != 0 || agg.ObjectsUpdated != 0 || agg.RelationshipsCreated != 0 {
 		t.Errorf("expected zero create/update counts, got %+v", agg)
 	}
-	if !reflect.DeepEqual(agg.DeletedObjectIDs, []string{"obj-1", "obj-2"}) {
-		t.Errorf("DeletedObjectIDs = %v, want [obj-1 obj-2]", agg.DeletedObjectIDs)
+	if !reflect.DeepEqual(agg.DeletedObjectIDs, []string{"obj-1", "obj-2", "obj-4"}) {
+		t.Errorf("DeletedObjectIDs = %v, want [obj-1 obj-2 obj-4]", agg.DeletedObjectIDs)
 	}
 	if !reflect.DeepEqual(agg.DeletedRelationshipIDs, []string{"rel-1", "rel-2"}) {
 		t.Errorf("DeletedRelationshipIDs = %v, want [rel-1 rel-2]", agg.DeletedRelationshipIDs)
 	}
-	if !strings.Contains(agg.Summary, "deleted 2 objects") || !strings.Contains(agg.Summary, "deleted 2 relationships") {
+	if !strings.Contains(agg.Summary, "deleted 3 objects") || !strings.Contains(agg.Summary, "deleted 2 relationships") {
 		t.Errorf("Summary = %q, want delete counts", agg.Summary)
 	}
 	if agg.Summary == "No graph changes were made by this run." {
@@ -556,8 +662,11 @@ func TestRememberStatus_ReextractionFailed(t *testing.T) {
 func TestRememberStatus_MixedDirectAndReextraction(t *testing.T) {
 	toolCalls := []*AgentRunToolCall{
 		tc("entity-create", nil, map[string]any{
-			"results": []any{
-				map[string]any{"success": true, "entity": map[string]any{"id": "obj-direct", "type": "Decision"}},
+			"ok": true,
+			"data": map[string]any{
+				"results": []any{
+					map[string]any{"ok": true, "entity": map[string]any{"id": "obj-direct", "type": "Decision"}},
+				},
 			},
 		}),
 		tc("queue-reextraction", map[string]any{"document_id": "d-1"}, map[string]any{"job_id": "job-1"}),

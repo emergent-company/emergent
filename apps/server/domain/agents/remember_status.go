@@ -312,54 +312,59 @@ func overallRememberStatus(runStatus AgentRunStatus, agentErr string, jobsPendin
 
 // parseEntityCreate counts created entities (and any inline relationships
 // created with them) from an entity-create tool call output.
+//
+// Entity-create emits the uniform envelope: the batch results[] live at
+// data.results[] and each item carries its own ok flag and entity payload —
+// {"ok": true, "data": {"results": [{"ok": true, "entity": {"id": "...",
+// "type": "...", "key": "...", "relationships": [...]}, "index": n}, ...],
+// "message": "..."}, "meta": {"created": n, "failed": m, "total": t, ...}}.
+// Items with ok=false are skipped; only items with ok=true and an entity
+// payload are counted.
 func (a *rememberStatusAggregation) parseEntityCreate(output map[string]any) {
-	// Batch form: {"success": n, "failed": m, "results": [{"success": true,
-	// "entity": {"id": "...", "type": "...", "relationships": [...]}}]}
-	if results := mapSlice(output, "results"); results != nil {
-		for _, raw := range results {
-			item, ok := raw.(map[string]any)
-			if !ok || !mapBool(item, "success") {
-				continue
-			}
-			ent := mapMap(item, "entity")
-			if ent == nil {
-				continue // malformed result — no entity payload, skip
-			}
-			a.ObjectsCreated++
-			a.collectEntity(ent)
-			if rels := mapSlice(ent, "relationships"); rels != nil {
-				for _, rRaw := range rels {
-					r, ok := rRaw.(map[string]any)
-					if !ok {
-						continue
-					}
-					a.RelationshipsCreated++
-					if rid := mapStr(r, "id"); rid != "" {
-						addID(&a.CreatedRelationshipIDs, rid)
-					}
-					if rt := mapStr(r, "type"); rt != "" {
-						addType(&a.DiscoveredTypes, rt)
-					}
+	data := mapMap(output, "data")
+	if data == nil {
+		return // not an enveloped result — no data layer, skip
+	}
+	for _, raw := range mapSlice(data, "results") {
+		item, ok := raw.(map[string]any)
+		if !ok || !mapBool(item, "ok") {
+			continue
+		}
+		ent := mapMap(item, "entity")
+		if ent == nil {
+			continue // malformed result — no entity payload, skip
+		}
+		a.ObjectsCreated++
+		a.collectEntity(ent)
+		if rels := mapSlice(ent, "relationships"); rels != nil {
+			for _, rRaw := range rels {
+				r, ok := rRaw.(map[string]any)
+				if !ok {
+					continue
+				}
+				a.RelationshipsCreated++
+				if rid := mapStr(r, "id"); rid != "" {
+					addID(&a.CreatedRelationshipIDs, rid)
+				}
+				if rt := mapStr(r, "type"); rt != "" {
+					addType(&a.DiscoveredTypes, rt)
 				}
 			}
 		}
-		return
-	}
-
-	// Single-entity fallback: {"success": true, "entity": {...}}
-	if ent := mapMap(output, "entity"); ent != nil && mapBool(output, "success") {
-		a.ObjectsCreated++
-		a.collectEntity(ent)
 	}
 }
 
-// parseEntityUpdate counts an entity-update tool call output. Calls with a
-// missing/malformed entity payload are skipped (defensive best-effort parsing).
+// parseEntityUpdate counts an entity-update tool call output.
+//
+// Entity-update emits the uniform envelope with the entity payload nested under
+// data.entity — {"ok": true, "data": {"entity": {"id": "...", "type": "..."}}}.
+// Calls with ok=false or a missing/malformed entity payload are skipped
+// (defensive best-effort parsing).
 func (a *rememberStatusAggregation) parseEntityUpdate(output map[string]any) {
-	if !mapBool(output, "success") {
+	if !mapBool(output, "ok") {
 		return
 	}
-	ent := mapMap(output, "entity")
+	ent := mapMap(mapMap(output, "data"), "entity")
 	if ent == nil {
 		return // malformed output — no entity payload, skip
 	}
@@ -370,74 +375,74 @@ func (a *rememberStatusAggregation) parseEntityUpdate(output map[string]any) {
 }
 
 // parseRelationshipCreate counts an entity-relationship-create tool call output.
-// Relationship outputs vary: {"id": "..."} at top level, wrapped under
-// "relationship"/"data", or as "relationship_id"/"relationship_type" keys.
+//
+// Relationship-create emits the uniform batch envelope: per-item results live
+// at data.results[], each carrying its own ok flag and a relationship payload —
+// {"ok": true, "data": {"results": [{"ok": true, "relationship": {"id": "...",
+// "type": "...", "source_id": "...", "target_id": "..."}, "index": n}, ...]},
+// "meta": {"created": n, "failed": m, "total": t}}. Items with ok=false or a
+// missing relationship payload are skipped.
 func (a *rememberStatusAggregation) parseRelationshipCreate(output map[string]any) {
-	rel := output
-	if r := mapMap(output, "relationship"); r != nil {
-		rel = r
-	} else if r := mapMap(output, "data"); r != nil {
-		rel = r
+	data := mapMap(output, "data")
+	if data == nil {
+		return // not an enveloped result — no data layer, skip
 	}
-
-	id := mapStr(rel, "id")
-	if id == "" {
-		id = mapStr(output, "relationship_id")
-	}
-	if id == "" {
-		// No id extractable — only count when the output explicitly signals success.
-		if !mapBool(output, "success") && !mapBool(rel, "success") {
-			return
+	for _, raw := range mapSlice(data, "results") {
+		item, ok := raw.(map[string]any)
+		if !ok || !mapBool(item, "ok") {
+			continue
 		}
-	}
-	a.RelationshipsCreated++
-	if id != "" {
-		addID(&a.CreatedRelationshipIDs, id)
-	}
-	t := mapStr(rel, "type")
-	if t == "" {
-		t = mapStr(output, "relationship_type")
-	}
-	if t != "" {
-		addType(&a.DiscoveredTypes, t)
+		rel := mapMap(item, "relationship")
+		if rel == nil {
+			continue // malformed result — no relationship payload, skip
+		}
+		a.RelationshipsCreated++
+		if id := mapStr(rel, "id"); id != "" {
+			addID(&a.CreatedRelationshipIDs, id)
+		}
+		if t := mapStr(rel, "type"); t != "" {
+			addType(&a.DiscoveredTypes, t)
+		}
 	}
 }
 
-// parseEntityDelete counts an entity-delete tool call output. The output only
-// carries {"success": true, "message": "..."} — the deleted entity's id is read
-// from the call's input args (entity_id, a UUID or key). Calls without an
-// explicit success flag are skipped (defensive best-effort parsing).
+// parseEntityDelete counts an entity-delete tool call output.
+//
+// Entity-delete emits the uniform envelope with the deleted id nested under
+// data.entity_id — {"ok": true, "data": {"entity_id": "..."}}. The id read
+// from the output data is authoritative; when absent, fall back to the call's
+// input args (entity_id, a UUID or key). Calls without an explicit ok flag are
+// skipped (defensive best-effort parsing).
 func (a *rememberStatusAggregation) parseEntityDelete(tc *AgentRunToolCall) {
-	if !mapBool(tc.Output, "success") {
+	if !mapBool(tc.Output, "ok") {
 		return
 	}
 	a.ObjectsDeleted++
-	if id := mapStr(tc.Input, "entity_id"); id != "" {
+	id := mapStr(mapMap(tc.Output, "data"), "entity_id")
+	if id == "" {
+		id = mapStr(tc.Input, "entity_id")
+	}
+	if id != "" {
 		addID(&a.DeletedObjectIDs, id)
 	}
 }
 
-// parseRelationshipDelete counts a relationship-delete tool call output. The
-// output carries {"success": true, "relationship": {...}} where the
-// relationship payload includes the tombstone id; fall back to the input
-// relationship_id when no id is extractable from the output.
+// parseRelationshipDelete counts a relationship-delete tool call output.
+//
+// Relationship-delete emits the uniform envelope with the deleted id nested
+// under data.relationship_id — {"ok": true, "data": {"relationship_id": "..."}}.
+// The id read from the output data is authoritative; fall back to the input
+// relationship_id when it is absent.
 func (a *rememberStatusAggregation) parseRelationshipDelete(tc *AgentRunToolCall) {
-	if !mapBool(tc.Output, "success") {
+	if !mapBool(tc.Output, "ok") {
 		return
 	}
 	a.RelationshipsDeleted++
-	if rel := mapMap(tc.Output, "relationship"); rel != nil {
-		if id := mapStr(rel, "id"); id != "" {
-			addID(&a.DeletedRelationshipIDs, id)
-			return
-		}
+	id := mapStr(mapMap(tc.Output, "data"), "relationship_id")
+	if id == "" {
+		id = mapStr(tc.Input, "relationship_id")
 	}
-	if id := mapStr(tc.Output, "id"); id != "" {
-		addID(&a.DeletedRelationshipIDs, id)
-		return
-	}
-	// No id extractable from the output — fall back to the input relationship_id.
-	if id := mapStr(tc.Input, "relationship_id"); id != "" {
+	if id != "" {
 		addID(&a.DeletedRelationshipIDs, id)
 	}
 }

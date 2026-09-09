@@ -184,7 +184,7 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 				"project_id", projectID,
 			)
 		} else {
-			return s.wrapResultCompact(slimSearchResponse(s.mapUnifiedToSearchResponse(res, types, labels, allowedTypes, blockedTypes), opts))
+			return envelopeSearchResponse(s.mapUnifiedToSearchResponse(res, types, labels, allowedTypes, blockedTypes), opts)
 		}
 	}
 
@@ -230,7 +230,7 @@ func (s *Service) executeHybridSearch(ctx context.Context, projectID string, arg
 	results.Data = filtered
 	results.Total = len(filtered)
 
-	return s.wrapResultCompact(slimSearchResponse(results, opts))
+	return envelopeSearchResponse(results, opts)
 }
 
 // mapUnifiedToSearchResponse converts unified search results back to graph.SearchResponse
@@ -398,7 +398,7 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 			s.log.WarnContext(ctx, "unified search failed in semantic_search, falling back",
 				"error", err, "project_id", projectID)
 		} else {
-			return s.wrapResultCompact(slimSearchResponse(s.mapUnifiedToSearchResponse(res, types, nil, allowedTypes, blockedTypes), opts))
+			return envelopeSearchResponse(s.mapUnifiedToSearchResponse(res, types, nil, allowedTypes, blockedTypes), opts)
 		}
 	}
 
@@ -432,7 +432,7 @@ func (s *Service) executeSemanticSearch(ctx context.Context, projectID string, a
 	results.Data = filtered
 	results.Total = len(filtered)
 
-	return s.wrapResultCompact(slimSearchResponse(results, opts))
+	return envelopeSearchResponse(results, opts)
 }
 
 // executeFindSimilar finds entities similar to a given entity
@@ -720,10 +720,9 @@ func (s *Service) executeDeleteRelationship(ctx context.Context, projectID strin
 		return nil, fmt.Errorf("delete relationship: %w", err)
 	}
 
-	return s.wrapResultCompact(map[string]any{
-		"success":         true,
+	return envelopeResult(true, map[string]any{
 		"relationship_id": relID.String(),
-	})
+	}, nil, "")
 }
 
 // executeListTags gets all unique tags in the project
