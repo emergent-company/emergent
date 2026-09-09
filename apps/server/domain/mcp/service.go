@@ -851,6 +851,10 @@ func (s *Service) GetToolDefinitions() []ToolDefinition {
 						Type:        "number",
 						Description: "Boost score by how recently the object was accessed. 0 = disabled (default). Typical range: 0.5–2.0.",
 					},
+					"min_score": {
+						Type:        "number",
+						Description: "Optional minimum score for returned results (0.0–1.0). Items whose reported score falls below this threshold are dropped. Default: 0 (no cutoff) — weak matches are still returned, ranked by score, so callers can judge relevance themselves. Note: reported scores are fused and weight-scaled (graph-object scores are multiplied by the graph fusion weight, default 0.25), so pick a value relative to the scores you observe in results.",
+					},
 					"fields": {
 						Type:        "array",
 						Description: "Optional list of property field names to return from the properties blob (e.g. [\"method\",\"path\"]). id, type, key, name are always returned. Omit to return all properties (only when field_strategy=\"full\").",
@@ -893,6 +897,10 @@ func (s *Service) GetToolDefinitions() []ToolDefinition {
 						Minimum:     intPtr(1),
 						Maximum:     intPtr(50),
 						Default:     20,
+					},
+					"min_score": {
+						Type:        "number",
+						Description: "Optional minimum score for returned results (0.0–1.0). Items whose reported score falls below this threshold are dropped. Default: 0 (no cutoff). Note: reported scores are fused and weight-scaled (graph-object scores are multiplied by the graph fusion weight, default 0.25), so pick a value relative to the scores you observe in results.",
 					},
 					"fields": {
 						Type:        "array",

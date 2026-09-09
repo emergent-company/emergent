@@ -57,6 +57,8 @@ type UnifiedSearchRequest struct {
 	MaxTokenBudget      int                               `json:"maxTokenBudget,omitempty"`
 	BranchID            *string                           `json:"branch_id,omitempty"` // nil = main graph
 	Namespace           *string                           `json:"namespace,omitempty"` // filter graph results by namespace
+	Types               []string                          `json:"types,omitempty"`     // restrict graph-object candidates to these types at retrieval time
+	Labels              []string                          `json:"labels,omitempty"`    // restrict graph-object candidates to objects carrying any of these labels at retrieval time
 	RecencyBoost        *float32                          `json:"recencyBoost,omitempty"`
 	RecencyHalfLife     *float32                          `json:"recencyHalfLife,omitempty"`
 	AccessBoost         *float32                          `json:"accessBoost,omitempty"`
