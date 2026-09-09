@@ -52,3 +52,41 @@ func TestParsePricingEntries(t *testing.T) {
 		}
 	}
 }
+
+// TestStaticPricingCoversEmbeddings guards the embedded fallback pricing list:
+// embedding models must carry retail rates so embedding usage events and the
+// Providers rate panel resolve costs (model-only fallback also matches when a
+// Gemini embedding is served through an OpenAI-compatible/LiteLLM provider).
+func TestStaticPricingCoversEmbeddings(t *testing.T) {
+	got := map[ProviderType]map[string]float64{}
+	for _, p := range staticPricing {
+		if got[p.Provider] == nil {
+			got[p.Provider] = map[string]float64{}
+		}
+		got[p.Provider][p.Model] = p.TextInputPrice
+	}
+
+	want := []struct {
+		provider       ProviderType
+		model          string
+		textInputPrice float64
+	}{
+		{ProviderGoogleAI, "gemini-embedding-001", 0.15},
+		{ProviderGoogleAI, "gemini-embedding-2", 0.20},
+		{ProviderVertexAI, "gemini-embedding-001", 0.15},
+		{ProviderVertexAI, "gemini-embedding-2", 0.20},
+		{ProviderOpenAI, "text-embedding-3-small", 0.02},
+		{ProviderOpenAI, "text-embedding-3-large", 0.13},
+	}
+
+	for _, w := range want {
+		price, ok := got[w.provider][w.model]
+		if !ok {
+			t.Errorf("staticPricing missing embedding row (%s, %s)", w.provider, w.model)
+			continue
+		}
+		if price != w.textInputPrice {
+			t.Errorf("staticPricing (%s, %s) TextInputPrice = %v, want %v", w.provider, w.model, price, w.textInputPrice)
+		}
+	}
+}
