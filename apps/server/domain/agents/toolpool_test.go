@@ -433,10 +433,11 @@ func TestResolveTools_BareExternalName_WithRegistryService_StillWraps(t *testing
 	assert.Contains(t, names, "ts_web_fetch_exa")
 }
 
-// --- slugifyFunctionPart / externalToolKey ---
+// --- externalToolKey ---
 //
 // LLM function names must match ^[A-Za-z0-9_-]{1,64}$; server names such as
 // "E2E MCP 123" would otherwise produce pool keys providers silently drop.
+// (SlugifyServerName itself is unit-tested in domain/mcpregistry/names_test.go.)
 
 // functionNameRE mirrors the LLM function-name contract enforced by
 // tool-calling providers.
@@ -445,25 +446,6 @@ var functionNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 func requireValidFunctionName(t *testing.T, name string) {
 	t.Helper()
 	require.Regexp(t, functionNameRE, name, "name %q violates the LLM function-name contract", name)
-}
-
-func TestSlugifyFunctionPart(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"E2E MCP 123", "e2e_mcp_123"},
-		{"E2E  MCP   123", "e2e_mcp_123"}, // runs of separators collapse to a single _
-		{"MyCool-Server!!v2", "mycool_server_v2"},
-		{"MixedCASE123", "mixedcase123"},
-		{"already_clean", "already_clean"},
-		{"_leading", "leading"},
-		{"trailing_", "trailing"},
-		{"_both_", "both"},
-		{"", "server"}, // empty input
-		{"   ", "server"},
-		{"!!!", "server"}, // nothing left after collapsing
-	}
-	for _, c := range cases {
-		assert.Equal(t, c.want, slugifyFunctionPart(c.in), "slugifyFunctionPart(%q)", c.in)
-	}
 }
 
 func TestExternalToolKey_AlwaysValidFunctionName(t *testing.T) {

@@ -64,43 +64,16 @@ const DefaultMaxDepth = 6
 // this charset/limit are silently dropped or rejected, so the tool never fires.
 const maxFunctionNameLen = 64
 
-// slugifyFunctionPart converts a server name into a function-name-safe prefix:
-// lowercased; any run of characters outside [a-z0-9] collapses to a single "_";
-// leading/trailing "_" trimmed; falls back to "server" when nothing remains.
-// Deterministic and pure — used when building external tool pool keys.
-func slugifyFunctionPart(s string) string {
-	lower := strings.ToLower(s)
-	var b strings.Builder
-	b.Grow(len(lower))
-	prevUnderscore := false
-	for _, r := range lower {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			prevUnderscore = false
-			continue
-		}
-		if !prevUnderscore {
-			b.WriteByte('_')
-			prevUnderscore = true
-		}
-	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return "server"
-	}
-	return out
-}
-
 // externalToolKey builds the pooled cache key for an external MCP tool:
-// slugified server name + "_" + bare tool name (Diane convention), capped at
-// maxFunctionNameLen so the key is always a legal LLM function name. The bare
-// tool-name suffix is always kept whole; when the combined key is too long the
-// slugged server part is truncated at the budget boundary (and any trailing "_"
-// stripped before the joining "_"). Deterministic; collisions between servers
-// whose names slug to the same prefix are tolerated (bare-alias resolution
-// already handles multi-server ambiguity).
+// SlugifyServerName(server) + "_" + bare tool name (Diane convention), capped
+// at maxFunctionNameLen so the key is always a legal LLM function name. The
+// bare tool-name suffix is always kept whole; when the combined key is too long
+// the slugged server part is truncated at the budget boundary (and any trailing
+// "_" stripped before the joining "_"). Deterministic; collisions between
+// servers whose names slug to the same prefix are tolerated (bare-alias
+// resolution already handles multi-server ambiguity).
 func externalToolKey(serverName, toolName string) string {
-	slug := slugifyFunctionPart(serverName)
+	slug := mcpregistry.SlugifyServerName(serverName)
 	if slug != "" && len(slug)+1+len(toolName) <= maxFunctionNameLen {
 		return slug + "_" + toolName
 	}
