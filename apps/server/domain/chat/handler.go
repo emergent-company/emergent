@@ -540,7 +540,9 @@ func (h *Handler) StreamChat(c echo.Context) error {
 	// Get or create conversation
 	var conv *Conversation
 	if req.ConversationID != nil {
-		// Use existing conversation — ignore agentDefinitionId from request body
+		// Use existing conversation. If it is still unbound and the request
+		// carries an agent definition id, bind it below on this first
+		// agent-backed turn; a conversation that already has an agent keeps it.
 		parsed, _ := uuid.Parse(*req.ConversationID) // Already validated
 		var err error
 		conv, err = h.svc.GetConversation(ctx, user.ProjectID, parsed)
