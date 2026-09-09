@@ -233,7 +233,7 @@ func TestFetchOpenAICompatibleModels(t *testing.T) {
 		EmbeddingModel:  "gemini/gemini-embedding-001",
 	}
 
-	models, err := svc.fetchOpenAICompatibleModels(context.Background(), cred)
+	models, err := svc.fetchOpenAICompatibleModels(context.Background(), ProviderOpenAI, cred)
 	if err != nil {
 		t.Fatalf("fetchOpenAICompatibleModels() error = %v", err)
 	}
@@ -242,6 +242,11 @@ func TestFetchOpenAICompatibleModels(t *testing.T) {
 	}
 	if len(models) != 3 {
 		t.Fatalf("got %d models, want 3: %+v", len(models), models)
+	}
+	for _, m := range models {
+		if m.Provider != ProviderOpenAI {
+			t.Errorf("fetched model %q provider = %q, want %q", m.ModelName, m.Provider, ProviderOpenAI)
+		}
 	}
 
 	pro := findModel(models, "deepseek-v4-pro")
@@ -297,7 +302,7 @@ func TestFetchOpenAICompatibleModelsAddsConfiguredModels(t *testing.T) {
 		EmbeddingModel:  "gemini/gemini-embedding-001", // not in /v1/models
 	}
 
-	models, err := svc.fetchOpenAICompatibleModels(context.Background(), cred)
+	models, err := svc.fetchOpenAICompatibleModels(context.Background(), ProviderOpenAI, cred)
 	if err != nil {
 		t.Fatalf("fetchOpenAICompatibleModels() error = %v", err)
 	}
@@ -314,7 +319,7 @@ func TestFetchOpenAICompatibleModelsAddsConfiguredModels(t *testing.T) {
 
 func TestFetchOpenAICompatibleModelsRequiresBaseURL(t *testing.T) {
 	svc := newTestCatalogService()
-	_, err := svc.fetchOpenAICompatibleModels(context.Background(), &ResolvedCredential{})
+	_, err := svc.fetchOpenAICompatibleModels(context.Background(), ProviderOpenAI, &ResolvedCredential{})
 	if err == nil {
 		t.Fatal("expected error for missing base_url")
 	}
@@ -322,15 +327,20 @@ func TestFetchOpenAICompatibleModelsRequiresBaseURL(t *testing.T) {
 
 func TestConfiguredOpenAIModels(t *testing.T) {
 	svc := newTestCatalogService()
-	models := svc.configuredOpenAIModels(&ResolvedCredential{
+	models := svc.configuredOpenAIModels(ProviderOpenAI, &ResolvedCredential{
 		GenerativeModel: "deepseek-v4-pro",
 		EmbeddingModel:  "gemini/gemini-embedding-001",
 	})
 	if len(models) != 2 {
 		t.Fatalf("got %d models, want 2: %+v", len(models), models)
 	}
+	for _, m := range models {
+		if m.Provider != ProviderOpenAI {
+			t.Errorf("configured model %q provider = %q, want %q", m.ModelName, m.Provider, ProviderOpenAI)
+		}
+	}
 	// Duplicate generative/embedding name collapses to one row.
-	dup := svc.configuredOpenAIModels(&ResolvedCredential{
+	dup := svc.configuredOpenAIModels(ProviderOpenAI, &ResolvedCredential{
 		GenerativeModel: "same-model",
 		EmbeddingModel:  "same-model",
 	})

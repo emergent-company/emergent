@@ -190,6 +190,12 @@ func (s *Service) persistTraceAsync(traceID uuid.UUID, projectID uuid.UUID, req 
 		if req.MinScore != nil {
 			filters["minScore"] = *req.MinScore
 		}
+		if len(req.Types) > 0 {
+			filters["types"] = req.Types
+		}
+		if len(req.Labels) > 0 {
+			filters["labels"] = req.Labels
+		}
 
 		const maxTraceCandidates = 200
 		candidates := make([]traceCandidate, 0, maxTraceCandidates)
@@ -418,6 +424,30 @@ func (s *Service) makeMetadata(
 	return metadata
 }
 
+// hybridSearchRequestFromUnified builds the graph hybrid search request for the
+// unified search graph leg. Isolated as a pure function so the wiring (types,
+// labels, namespace, branch, boosts) can be unit-tested without a database.
+func hybridSearchRequestFromUnified(req *UnifiedSearchRequest, vector []float32) *graph.HybridSearchRequest {
+	hybridReq := &graph.HybridSearchRequest{
+		Query:           req.Query,
+		Vector:          vector,
+		Types:           req.Types,
+		Labels:          req.Labels,
+		Limit:           req.Limit,
+		Namespace:       req.Namespace,
+		RecencyBoost:    req.RecencyBoost,
+		RecencyHalfLife: req.RecencyHalfLife,
+		AccessBoost:     req.AccessBoost,
+	}
+	if req.BranchID != nil {
+		branchUUID, err := uuid.Parse(*req.BranchID)
+		if err == nil {
+			hybridReq.BranchID = &branchUUID
+		}
+	}
+	return hybridReq
+}
+
 // executeGraphSearch runs the graph search using the graph service.
 // If queryVector is non-nil, it is used directly; otherwise falls back to embedding the query.
 func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, req *UnifiedSearchRequest, searchCtx *SearchContext, queryVector []float32, minScore *float32) ([]*UnifiedSearchGraphResult, any, error) {
@@ -434,21 +464,7 @@ func (s *Service) executeGraphSearch(ctx context.Context, projectID uuid.UUID, r
 	}
 
 	// Build hybrid search request
-	hybridReq := &graph.HybridSearchRequest{
-		Query:           req.Query,
-		Vector:          vector,
-		Limit:           req.Limit,
-		Namespace:       req.Namespace,
-		RecencyBoost:    req.RecencyBoost,
-		RecencyHalfLife: req.RecencyHalfLife,
-		AccessBoost:     req.AccessBoost,
-	}
-	if req.BranchID != nil {
-		branchUUID, err := uuid.Parse(*req.BranchID)
-		if err == nil {
-			hybridReq.BranchID = &branchUUID
-		}
-	}
+	hybridReq := hybridSearchRequestFromUnified(req, vector)
 
 	// Execute search (pass nil opts since unified search has its own debug handling)
 	searchResp, err := s.graphService.HybridSearch(ctx, projectID, hybridReq, nil)

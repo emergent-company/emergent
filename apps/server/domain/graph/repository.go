@@ -1417,13 +1417,15 @@ func buildSearchFilters(filters searchFilters) (conditions []string, args []any)
 	}
 
 	if len(filters.Types) > 0 {
-		conditions = append(conditions, "type = ANY(?::text[])")
-		args = append(args, formatTextArray(filters.Types))
+		// Exact match keeps index-friendly fast path; lower() fallback keeps the
+		// filter consistent with the case-insensitive post-filter used by MCP tools.
+		conditions = append(conditions, "(type = ANY(?::text[]) OR lower(type) = ANY(?::text[]))")
+		args = append(args, formatTextArray(filters.Types), formatTextArray(lowerStrings(filters.Types)))
 	}
 
 	if len(filters.Labels) > 0 {
-		conditions = append(conditions, "labels && ?::text[]")
-		args = append(args, formatTextArray(filters.Labels))
+		conditions = append(conditions, "(labels && ?::text[] OR EXISTS (SELECT 1 FROM unnest(labels) l WHERE lower(l) = ANY(?::text[])))")
+		args = append(args, formatTextArray(filters.Labels), formatTextArray(lowerStrings(filters.Labels)))
 	}
 
 	if filters.Namespace != nil {
@@ -1727,6 +1729,16 @@ func (r *Repository) VectorSearch(ctx context.Context, params VectorSearchParams
 	}
 
 	return results, nil
+}
+
+// lowerStrings lowercases each element of in, returning a new slice.
+// Used to build case-insensitive fallback arguments for search filters.
+func lowerStrings(in []string) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strings.ToLower(s)
+	}
+	return out
 }
 
 // formatTextArray converts a string slice to PostgreSQL text array literal format.
