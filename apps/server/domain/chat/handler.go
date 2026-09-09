@@ -519,9 +519,13 @@ func (h *Handler) StreamChat(c echo.Context) error {
 
 	message := strings.TrimSpace(req.Message)
 
-	// If agentDefinitionId is provided on a new conversation, validate it exists
+	// If agentDefinitionId is provided, validate it exists. On a new
+	// conversation it is bound at creation; on an existing conversation it is
+	// bound below on the first agent-backed turn (get-or-create flows such as
+	// object-chat leave agent_definition_id unset and only carry the agent in
+	// the redirect URL).
 	var agentDefID *uuid.UUID
-	if req.AgentDefinitionID != nil && req.ConversationID == nil {
+	if req.AgentDefinitionID != nil {
 		parsed, _ := uuid.Parse(*req.AgentDefinitionID) // Already validated format
 		def, err := h.agentRepo.FindDefinitionByID(ctx, parsed.String(), &user.ProjectID)
 		if err != nil {
@@ -542,6 +546,21 @@ func (h *Handler) StreamChat(c echo.Context) error {
 		conv, err = h.svc.GetConversation(ctx, user.ProjectID, parsed)
 		if err != nil {
 			return err
+		}
+
+		// Bind the agent on the first agent-backed turn of an unbound
+		// conversation. Get-or-create flows (object-chat, canonical
+		// conversations) leave agent_definition_id unset and only carry the
+		// agent in the chat request, so without this bind the conversation
+		// would take the legacy direct-LLM path instead of the agent executor.
+		if conv.AgentDefinitionID == nil && agentDefID != nil {
+			conv.AgentDefinitionID = agentDefID
+			if err := h.svc.SetAgentDefinitionID(ctx, user.ProjectID, conv.ID, agentDefID); err != nil {
+				h.log.Warn("failed to bind agent to conversation on first turn",
+					slog.String("conversation_id", conv.ID.String()),
+					slog.String("error", err.Error()),
+				)
+			}
 		}
 
 		// Persist the user message
