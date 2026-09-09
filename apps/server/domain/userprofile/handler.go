@@ -22,8 +22,9 @@ const maxAvatarSize = 1 << 19
 
 // maxAvatarDimension caps the decoded pixel dimensions, rejecting
 // "decompression bomb" images (small file, huge pixel buffer) before the
-// full decode allocates memory.
-const maxAvatarDimension = 4096
+// full decode allocates memory. 1024x1024 bounds the worst-case decode at
+// ~4 MiB (RGBA), ample for an avatar.
+const maxAvatarDimension = 1024
 
 // allowedAvatarTypes are the image content types accepted for avatars,
 // matching the sniffed output of http.DetectContentType.
@@ -117,7 +118,7 @@ func (h *Handler) Update(c echo.Context) error {
 
 // Upload handles avatar image uploads (multipart field "file").
 // @Summary      Upload avatar
-// @Description  Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB, max 4096x4096 pixels)
+// @Description  Uploads a new avatar image for the authenticated user (PNG, JPEG, WEBP, GIF; max 512 KiB, max 1024x1024 pixels)
 // @Tags         user-profile
 // @Accept       multipart/form-data
 // @Produce      json
@@ -175,13 +176,13 @@ func (h *Handler) Upload(c echo.Context) error {
 	// allocates the full pixel buffer.
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return apperror.ErrBadRequest.WithMessage("invalid image")
+		return apperror.NewBadRequest("invalid image header")
 	}
 	if cfg.Width > maxAvatarDimension || cfg.Height > maxAvatarDimension {
-		return apperror.ErrBadRequest.WithMessage("image dimensions too large")
+		return apperror.NewBadRequest("image dimensions too large")
 	}
 	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
-		return apperror.ErrBadRequest.WithMessage("invalid image")
+		return apperror.NewBadRequest("corrupt image data")
 	}
 
 	profile, err := h.svc.UploadAvatar(c.Request().Context(), user.ID, bytes.NewReader(data), int64(len(data)), contentType)
