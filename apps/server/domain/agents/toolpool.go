@@ -91,6 +91,11 @@ type projectToolCache struct {
 	builtinTools map[string]bool
 	// relayToolInstance maps prefixed tool name → instance ID for relay tool routing
 	relayToolInstance map[string]string
+	// bareNameToKeys maps a bare tool name → every prefixed pool key exposing it.
+	// External MCP tools are pooled as ServerName_ToolName while the admin API
+	// persists whitelists with bare ToolName values, so whitelist resolution falls
+	// back through this index when an exact pool-key match misses.
+	bareNameToKeys map[string][]string
 }
 
 // NewToolPool creates a new ToolPool.
@@ -140,6 +145,7 @@ func (tp *ToolPool) buildCache(projectID string) *projectToolCache {
 		toolDefs:          make(map[string]mcp.ToolDefinition),
 		builtinTools:      make(map[string]bool),
 		relayToolInstance: make(map[string]string),
+		bareNameToKeys:    make(map[string][]string),
 	}
 
 	// 1. Built-in MCP tools — load from DB (respects per-project enabled flag).
@@ -216,6 +222,10 @@ func (tp *ToolPool) buildCache(projectID string) *projectToolCache {
 				}
 				cache.toolDefs[prefixedName] = td
 				cache.toolNames = append(cache.toolNames, prefixedName)
+				// Index the bare tool name → prefixed key so whitelist entries
+				// persisted by the admin API (bare ToolName, no server prefix)
+				// can be resolved back to the pooled ServerName_ToolName key.
+				cache.bareNameToKeys[et.ToolName] = append(cache.bareNameToKeys[et.ToolName], prefixedName)
 			}
 			if len(extTools) > 0 {
 				tp.log.Debug("loaded external MCP tools into pool",
@@ -425,17 +435,47 @@ func (tp *ToolPool) matchToolsByWhitelist(cache *projectToolCache, whitelist []s
 				)
 			}
 		} else {
-			// Exact name match
-			if matched[pattern] {
-				continue
-			}
+			// Exact name match. External MCP tools are pooled under prefixed keys
+			// (ServerName_ToolName — Diane convention) while the admin API persists
+			// whitelists with bare ToolName values, so a whitelist entry can carry
+			// either form. An exact pool-key hit takes priority; when it misses,
+			// fall back to resolving the bare name against every prefixed pool key
+			// that exposes it (this branch only runs for non-glob entries).
 			if td, ok := cache.toolDefs[pattern]; ok {
-				result = append(result, td)
-				matched[pattern] = true
+				if !matched[td.Name] {
+					result = append(result, td)
+					matched[td.Name] = true
+				}
+			} else if keys := cache.bareNameToKeys[pattern]; len(keys) > 0 {
+				for _, key := range keys {
+					if matched[key] {
+						continue
+					}
+					td, ok := cache.toolDefs[key]
+					if !ok {
+						continue
+					}
+					result = append(result, td)
+					matched[key] = true
+				}
+				if len(keys) > 1 {
+					// Ambiguous bare name exposed by multiple servers — resolve all
+					// of them so the agent gets every matching tool.
+					tp.log.Warn("bare tool name in whitelist is ambiguous across servers — resolved all pool keys",
+						slog.String("tool", pattern),
+						slog.Any("pool_keys", keys),
+					)
+				} else {
+					tp.log.Debug("resolved bare tool name to prefixed pool key",
+						slog.String("tool", pattern),
+						slog.String("pool_key", keys[0]),
+					)
+				}
 			} else {
 				// Tool not found — log warning, skip (do not fail)
 				tp.log.Warn("tool not found in pool, skipping",
 					slog.String("tool", pattern),
+					slog.Int("pool_tool_count", len(cache.toolNames)),
 				)
 			}
 		}

@@ -12,7 +12,12 @@ import (
 	"testing"
 
 	"github.com/emergent-company/emergent.memory/internal/config"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/tool"
+	"google.golang.org/adk/tool/functiontool"
 	"google.golang.org/genai"
 )
 
@@ -530,4 +535,69 @@ func (r *staticResolver) ResolveAny(_ context.Context) (*ResolvedCredential, err
 
 func (r *staticResolver) ResolveFor(_ context.Context, _ string) (*ResolvedCredential, error) {
 	return r.cred, r.err
+}
+
+// TestOpenAICompatibleModel_ToolSchema_ContainsResolvedPrefixedName is the schema
+// half of the bare-tool-name fix (agent-tools-in-chat-schema). The tool pool
+// resolves a bare whitelist entry (web_fetch_exa) to its prefixed pool key
+// (ts_web_fetch_exa) and wraps it as an ADK functiontool — see
+// domain/agents/toolpool_test.go TestResolveTools_BareExternalName_YieldsPrefixedADKTool.
+// This test feeds an identically-constructed functiontool through the real model
+// request path (buildOpenAITools) and asserts the OpenAI tool schema the model
+// receives carries the prefixed pool key, never the bare whitelist name.
+func TestOpenAICompatibleModel_ToolSchema_ContainsResolvedPrefixedName(t *testing.T) {
+	// Mirrors toolpool.wrapSingleTool's external-tool wrapper construction:
+	// a functiontool whose Name is the prefixed ServerName_ToolName pool key.
+	poolTool, err := functiontool.New(
+		functiontool.Config{
+			Name:        "ts_web_fetch_exa",
+			Description: "Fetch a URL via the Exa MCP server",
+			InputSchema: &jsonschema.Schema{Type: "object"},
+		},
+		func(ctx tool.Context, args map[string]any) (map[string]any, error) {
+			return map[string]any{"ok": true, "result": "fetched"}, nil
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "ts_web_fetch_exa", poolTool.Name())
+
+	// Pack the resolved tool into genai declarations the way the ADK runner
+	// does before invoking the model (internal/toolinternal/toolutils.PackTool).
+	declarer, ok := poolTool.(interface {
+		Declaration() *genai.FunctionDeclaration
+	})
+	require.True(t, ok, "functiontool must expose Declaration()")
+	decl := declarer.Declaration()
+	require.NotNil(t, decl)
+	require.Equal(t, "ts_web_fetch_exa", decl.Name)
+
+	var captured openaiRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(makeOpenAIResponse("ok")))
+	}))
+	defer srv.Close()
+
+	m := NewOpenAICompatibleModel(srv.URL, "", "llama3")
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{{Text: "fetch it"}}},
+		},
+		Config: &genai.GenerateContentConfig{
+			Tools: []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{decl}}},
+		},
+	}
+
+	_, err = collectResponse(m.GenerateContent(context.Background(), req, false))
+	require.NoError(t, err)
+
+	require.Len(t, captured.Tools, 1, "exactly one tool declaration reaches the model")
+	require.NotNil(t, captured.Tools[0].Function)
+	assert.Equal(t, "ts_web_fetch_exa", captured.Tools[0].Function.Name,
+		"the LLM schema must carry the resolved prefixed pool key")
+	assert.NotEqual(t, "web_fetch_exa", captured.Tools[0].Function.Name,
+		"the bare whitelist name must not leak into the LLM schema")
+	assert.Equal(t, "Fetch a URL via the Exa MCP server", captured.Tools[0].Function.Description)
 }
