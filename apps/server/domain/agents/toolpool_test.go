@@ -2,12 +2,14 @@ package agents
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/emergent-company/emergent.memory/domain/mcp"
+	"github.com/emergent-company/emergent.memory/domain/mcpregistry"
 )
 
 // buildTestPool creates a ToolPool with a pre-populated cache for testing.
@@ -234,6 +236,190 @@ func TestToolPool_ToolNames_ReturnsAllCachedNames(t *testing.T) {
 	for _, n := range allTestTools {
 		assert.Contains(t, names, n)
 	}
+}
+
+// --- matchToolsByWhitelist bare-name resolution ---
+//
+// The admin API persists agent tool whitelists with BARE tool names
+// (web_fetch_exa), but the tool pool keys external MCP tools as
+// ServerName_ToolName (ts_web_fetch_exa). These tests pin the fallback that
+// resolves a bare whitelist entry to its prefixed pool key(s).
+
+// externalPoolCache builds a projectToolCache that mirrors a real pool layout:
+// builtin tools keyed by bare name, external MCP tools keyed by ServerName_ToolName.
+// externalNames must be prefixed; the bare tool name is derived by stripping the
+// leading "<server>_" segment and indexed into bareNameToKeys the same way
+// buildCache does at runtime.
+func externalPoolCache(builtinNames, externalNames []string) *projectToolCache {
+	cache := &projectToolCache{
+		toolDefs:          make(map[string]mcp.ToolDefinition),
+		builtinTools:      make(map[string]bool),
+		relayToolInstance: make(map[string]string),
+		bareNameToKeys:    make(map[string][]string),
+	}
+	for _, name := range builtinNames {
+		cache.toolDefs[name] = mcp.ToolDefinition{Name: name, InputSchema: mcp.InputSchema{Type: "object"}}
+		cache.toolNames = append(cache.toolNames, name)
+		cache.builtinTools[name] = true
+	}
+	for _, prefixed := range externalNames {
+		cache.toolDefs[prefixed] = mcp.ToolDefinition{Name: prefixed, InputSchema: mcp.InputSchema{Type: "object"}}
+		cache.toolNames = append(cache.toolNames, prefixed)
+		if i := strings.Index(prefixed, "_"); i > 0 {
+			bare := prefixed[i+1:]
+			cache.bareNameToKeys[bare] = append(cache.bareNameToKeys[bare], prefixed)
+		}
+	}
+	return cache
+}
+
+func TestMatchToolsByWhitelist_BareExternalName_ResolvesPrefixedKey(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa", "exa_graph_query"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// Bare external tool name (as the admin API persists it) — no such pool key
+	// exists, so it must resolve via bareNameToKeys to the prefixed key.
+	defs := tp.matchToolsByWhitelist(cache, []string{"web_fetch_exa"})
+
+	require.Len(t, defs, 1, "bare external name must resolve to exactly one prefixed key")
+	assert.Equal(t, "ts_web_fetch_exa", defs[0].Name)
+	assert.Equal(t, "ts_web_fetch_exa", cache.toolDefs[defs[0].Name].Name)
+}
+
+func TestMatchToolsByWhitelist_ExactPrefixedExternalName_StillMatches(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// A whitelist entry that already carries the prefixed pool key must keep
+	// matching exactly (no regression of the primary path).
+	defs := tp.matchToolsByWhitelist(cache, []string{"ts_web_fetch_exa"})
+
+	require.Len(t, defs, 1)
+	assert.Equal(t, "ts_web_fetch_exa", defs[0].Name)
+}
+
+func TestMatchToolsByWhitelist_AmbiguousBareName_ResolvesBothServers(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"alpha_web_fetch_exa", "beta_web_fetch_exa"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// Same bare tool name exposed by two external servers — both prefixed keys
+	// must be resolved so the agent can reach either server's implementation.
+	defs := tp.matchToolsByWhitelist(cache, []string{"web_fetch_exa"})
+
+	names := toolNames(defs)
+	assert.ElementsMatch(t, []string{"alpha_web_fetch_exa", "beta_web_fetch_exa"}, names)
+}
+
+func TestMatchToolsByWhitelist_BareAndPrefixedEntry_Dedupes(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// Whitelist containing both the bare and the prefixed form of the same tool
+	// must yield a single resolved def.
+	defs := tp.matchToolsByWhitelist(cache, []string{"web_fetch_exa", "ts_web_fetch_exa"})
+
+	require.Len(t, defs, 1)
+	assert.Equal(t, "ts_web_fetch_exa", defs[0].Name)
+}
+
+func TestMatchToolsByWhitelist_UnknownBareName_ResolvesNothing(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// An invalid/unknown tool name (neither a pool key nor an indexed bare name)
+	// must keep the silent-skip behaviour — it resolves to nothing, no error.
+	defs := tp.matchToolsByWhitelist(cache, []string{"memory_lookup"})
+
+	assert.Empty(t, defs)
+}
+
+func TestMatchToolsByWhitelist_RealBareBuiltin_StillMatchesExactly(t *testing.T) {
+	cache := externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+	tp := &ToolPool{log: slog.Default()}
+
+	// A genuine bare builtin pool key (search-knowledge) must keep resolving
+	// through the exact-match path — the bare-name fallback is only a rescue
+	// when the exact lookup misses.
+	defs := tp.matchToolsByWhitelist(cache, []string{"search-knowledge"})
+
+	require.Len(t, defs, 1)
+	assert.Equal(t, "search-knowledge", defs[0].Name)
+}
+
+func TestResolveTools_BareExternalName_YieldsPrefixedADKTool(t *testing.T) {
+	tp := &ToolPool{
+		log:        slog.Default(),
+		mcpService: &mcp.Service{},
+		cache:      make(map[string]*projectToolCache),
+	}
+	// Leave registryService nil on purpose — resolution and wrapping must not
+	// depend on it; the prefixed def routes through the builtin wrapper here.
+	tp.cache["test-project"] = externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+
+	agentDef := &AgentDefinition{Tools: []string{"web_fetch_exa"}, Name: "research"}
+	tools, err := tp.ResolveTools("test-project", agentDef, 0, DefaultMaxDepth)
+	require.NoError(t, err)
+
+	var names []string
+	for _, t := range tools {
+		if t == nil {
+			continue
+		}
+		names = append(names, t.Name())
+	}
+	assert.Contains(t, names, "ts_web_fetch_exa",
+		"bare whitelist entry must resolve to the prefixed ADK tool in the pipeline")
+	assert.Contains(t, names, "set_session_title",
+		"hidden builtin set_session_title injection must still apply")
+	assert.NotContains(t, names, "web_fetch_exa",
+		"the bare name must not leak into the resolved pipeline — only prefixed keys are valid pool members")
+}
+
+func TestResolveTools_BareExternalName_WithRegistryService_StillWraps(t *testing.T) {
+	tp := &ToolPool{
+		log:             slog.Default(),
+		mcpService:      &mcp.Service{},
+		registryService: &mcpregistry.Service{},
+		cache:           make(map[string]*projectToolCache),
+	}
+	tp.cache["test-project"] = externalPoolCache(
+		[]string{"search-knowledge"},
+		[]string{"ts_web_fetch_exa"},
+	)
+
+	agentDef := &AgentDefinition{Tools: []string{"web_fetch_exa"}, Name: "research"}
+	tools, err := tp.ResolveTools("test-project", agentDef, 0, DefaultMaxDepth)
+	require.NoError(t, err)
+
+	var names []string
+	for _, t := range tools {
+		if t == nil {
+			continue
+		}
+		names = append(names, t.Name())
+	}
+	assert.Contains(t, names, "ts_web_fetch_exa")
 }
 
 // --- convertToolResult ---
